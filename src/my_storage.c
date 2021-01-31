@@ -54,7 +54,7 @@ int write_total_data(char *total_file_data) {
         qrcode = QRcode_encodeData(MY_BLOCK_SIZE, temp, QR_VERSION, QR_ECLEVEL_L);
         if (qrcode == NULL) {
             perror("Error al crear el código QR en QRcode_encodeData.");
-            return -EIO;
+            return -ENOMEM;
         }
 
         sprintf(file_name, "%sQRFS-%d", qrfolder_path, block_counter++);
@@ -153,7 +153,12 @@ void *read_data(int block_num) {
     zbar_symbol_type_t typ = zbar_symbol_get_type(symbol);
     const char *data = zbar_symbol_get_data(symbol);
 
+    //TODO cambiar los enteros
     char *to_return_data = malloc(1024);
+    if(to_return_data == NULL) {
+        perror("Error al asiganar memoria en read_data\n");
+        return NULL; 
+    }
     memcpy(to_return_data, data, 1024);
 
     /* clean up */
@@ -340,6 +345,7 @@ int is_set_inode_bitmap(int inode_num) {
     printf("Comprobando si el bit %d del bitmap de inodos se encuentra activado.\n", inode_num);
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
+
         perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
@@ -351,6 +357,7 @@ int is_set_inode_bitmap(int inode_num) {
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de inodos en malloc.");
+
         return -ENOMEM;
     }
 
@@ -388,7 +395,7 @@ int is_set_block_bitmap(int block_num) {
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de bloques en malloc.");
-        return -EXIT_FAILURE;
+        return -ENOMEM;
     }
     void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
@@ -540,6 +547,7 @@ int get_free_block() {
 
     for(int i=0; i<NUMBER_OF_DATABLOCKS; ++i) {
         if(!FD_ISSET(i, block_map)) {
+
             FD_SET(i, block_map);
 
             block_cipher((void **)&block_map_data, key);
@@ -715,7 +723,7 @@ size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int i
 size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
 
     uint32_t *blk_indices  = read_data(blk);
-    if (blk_indices == NULL) {
+    if (blk_indices == NULL) 
         perror("Error al leer un bloque de índices en read_data.");
         return -EIO;
     }
@@ -835,6 +843,7 @@ int update_inode(int inode_id, my_inode *to_update_inode) {
 
     free(super_block);
     free(inode_block);
+
     return EXIT_SUCCESS;
 }
 
@@ -946,7 +955,7 @@ int parse(char *path, char *names[], int nnames) {
     free(dup_path);
 
     //if the number of names in the path exceed the maximum
-    if (nnames != 0 && count > nnames) return -1; //TODO free names??
+    if (nnames != 0 && count > nnames) return -EXIT_FAILURE; //TODO free names?? era un -1
     return count;
 }
 

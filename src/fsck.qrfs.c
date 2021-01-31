@@ -4,13 +4,13 @@
 
 #include <string.h>
 #include <math.h>
+#include <errno.h>
 
-#include "my_inode.h"
+#include "fsck.qrfs.h"
 #include "my_storage.h"
 
-int mkfs_file_size;
 
-int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent);// blocks_consistency_check
+int mkfs_file_size;
 
 int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
 
@@ -25,9 +25,9 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
         if(is_dir) {
             temp_dirent = read_data(inode->direct[index]);
             if(temp_dirent == NULL) {
-
                 perror("Error al leer datos con la función read_data.");
-                return -EXIT_FAILURE;
+                return  -EIO;
+
             }
             blocks_consistency_check_aux(&temp, temp_dirent); //FREE
             free(temp_dirent); //TODO le puse esto
@@ -102,8 +102,6 @@ int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent) {
     }
 }
 
-int inodes_consistency_check_aux(int **inodes_in_use, my_dirent *dirent);
-
 int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
 
     int *temp = *inodes_in_use;
@@ -114,15 +112,15 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
         if(!inode->direct[index]) {
             break; // Creo que puede haber un 0 de por medio
         }
-
         temp_dirent = read_data(inode->direct[index]);
         if(temp_dirent == NULL) {
-
+            //TODO hacer
             perror("Error al leer datos con la función read_data.");
-            return -EXIT_FAILURE;
+            return -EIO;
         }
         inodes_consistency_check_aux(&temp, temp_dirent); //FREE
         free(temp_dirent);
+
     }
 
     if(is_dir && index == NUM_DIRECT_ENT) { // TODO fijarse si inicia en 0 la ostia
@@ -289,17 +287,19 @@ int check_file_system(char *user_password) {
         if(blocks_in_use[i] > 1 || free_blocks[i] > 1) {
             perror("Se ha encontrado un duplicado de bloques en el sistema de archivos.");
             printf("Bloque encontrado: %d\n", i);
-            return -EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
+
         }
         if(blocks_in_use[i] && free_blocks[i]) {
             perror("Se ha encontrado un bloque marcado como libre, siendo parte de un inodo.");
             printf("Bloque encontrado: %d\n", i);
-            return -EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
         if(!blocks_in_use[i] && !free_blocks[i]) {
             perror("Se ha encontrado un bloque marcado como usado, sin ser parte de ningún inodo.");
             printf("Bloque encontrado: %d\n", i);
-            return -EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
+
         }
     }
     printf("Los bloques en el sistema de archivos se encuentran en un estado consistente.\n");
@@ -327,17 +327,18 @@ int check_file_system(char *user_password) {
         if(inodes_in_use[i] > 1 || free_inodes[i] > 1) {
             perror("Se ha encontrado un duplicado de inodos en el sistema de archivos.");
             printf("Inodo encontrado: %d\n", i);
-            return -EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
+
         }
         if(inodes_in_use[i] && free_inodes[i]) {
             perror("Se ha encontrado un inodo marcado como libre, siendo un archivo en el sistema.");
             printf("Inodo encontrado: %d\n", i);
-            return -EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
         if(!inodes_in_use[i] && !free_inodes[i]) {
             perror("Se ha encontrado un inodo marcado como utilizado, sin ser encontrado en ningún directorio.");
             printf("Inodo encontrado: %d\n", i);
-            return -EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
     }
     printf("El sistema de archivos posee todos sus inodos en un estado consistente.\n");
@@ -352,6 +353,7 @@ int check_file_system(char *user_password) {
 void usage(char *arg0) {
 
     printf("Uso: %s directorio_qr/ qr_inicial constraseña\n", arg0);
+
 }
 
 int main(int argc, char* argv[]) {
@@ -359,7 +361,7 @@ int main(int argc, char* argv[]) {
     if(argc != 4) {
         usage(argv[0]);
         perror("Error en los argumentos.");
-        return(-EXIT_FAILURE);
+        return(-EINVAL);
     }
 
     char *mkfs_qrfolder_path = argv[1];
@@ -367,6 +369,8 @@ int main(int argc, char* argv[]) {
     char *mkfs_password = argv[3];
     mkfs_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
 
+
     init_storage(mkfs_qrfolder_path, mkfs_password, mkfs_file_size);
     check_file_system(mkfs_password);
+    return EXIT_SUCCESS;
 }
