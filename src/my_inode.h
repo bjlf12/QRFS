@@ -58,20 +58,4 @@ my_dirent *create_dirent(int valid, int isDir, int inode_id, char *filename);
 
 int set_attributes_and_update(my_dirent *de, char *name, mode_t mode, bool isDir);
 
-void flip_iNode_bit(int which_iNode, int state); // 0 == off, 1 == on
-
-void print_node(my_inode *node);
-
-void print_additionalBlocks(my_inode *node);
-
-int find_empty_inode_index(); // Returns the index of the first free iNode, or -1 if no empty inode.
-
-const char *findName(const char* path);
-
-const char* findPrecedingPath(const char* path);
-
-void remove_from_dir(my_inode *dir, int nodeID);
-
-void name_node(my_inode *node, const char *path);
-
 #endif //QRFS_MY_INODE_H

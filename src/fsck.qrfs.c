@@ -9,11 +9,12 @@
 #include <fcntl.h>
 #include <string.h>
 #include <math.h>
+#include <errno.h>
 
-#include "my_inode.h"
+#include "fsck.qrfs.h"
 #include "my_storage.h"
 
-int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent);// blocks_consistency_check
+
 
 int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
 
@@ -30,7 +31,7 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
             if(temp_dirent == NULL) {
                 //TODO hacer
                 perror("Error al leer datos con la función read_data.\n");
-                return EXIT_FAILURE;
+                return  -EIO;
             }
             blocks_consistency_check_aux(&temp, temp_dirent); //FREE
             //free(temp_dirent);
@@ -91,8 +92,6 @@ int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent) {
     }
 }
 
-int inodes_consistency_check_aux(int **inodes_in_use, my_dirent *dirent);
-
 int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
 
     int *temp = *inodes_in_use;
@@ -108,7 +107,7 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
             if(temp_dirent == NULL) {
                 //TODO hacer
                 perror("Error al leer datos con la función read_data.\n");
-                return EXIT_FAILURE;
+                return -EIO;
             }
             inodes_consistency_check_aux(&temp, temp_dirent); //FREE
             //free(temp_dirent);
@@ -270,17 +269,17 @@ int check_file_system(char *user_password) {
         if(blocks_in_use[i] > 1 || free_blocks[i] > 1) {
             perror("Se ha encontrado un duplicado de bloques en el sistema de archivos. ");
             printf("Bloque encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
         if(blocks_in_use[i] && free_blocks[i]) {
             perror("Se ha encontrado un bloque marcado como libre, pero siendo parte de un inodo. ");
             printf("Bloque encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
         if(!blocks_in_use[i] && !free_blocks[i]) {
             perror("Se ha encontrado un bloque marcado como no libre, pero sin ser parte de ningún inodo. ");
             printf("Bloque encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
     }
     printf("Los bloques en el sistema de archivos se encuentran en un estado consistente.\n");
@@ -306,17 +305,17 @@ int check_file_system(char *user_password) {
         if(inodes_in_use[i] > 1 || free_inodes[i] > 1) {
             perror("Se ha encontrado un duplicado de inodos en el sistema de archivos.");
             printf("Inodo encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
         if(inodes_in_use[i] && free_inodes[i]) {
             perror("Se ha encontrado un inodo marcado como libre, pero siendo parte de un directorio.");
             printf("Inodo encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
         if(!inodes_in_use[i] && !free_inodes[i]) {
             perror("Se ha encontrado un inodo marcado como no libre, pero sin ser encontrado en ningún directorio.");
             printf("Inodo encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -ENOTRECOVERABLE;
         }
     }
     printf("El sistema de archivos posee todos sus inodos en un estado consistente.\n");
@@ -341,6 +340,8 @@ int check_file_system(char *user_password) {
 
 void usage() {
 
+    printf("Uso: ./fsck.qrfs directorio_qr/ constraseña\n");
+
 }
 
 int main(int argc, char* argv[]) {
@@ -348,7 +349,7 @@ int main(int argc, char* argv[]) {
     if(argc != 4) {
         usage();
         perror("Error en los argumentos.\n");
-        return(-1);
+        return(-EINVAL);
     }
     /*FILE *data = fopen("algonuevo", "w+");
     fprintf(data, "%c", 1);
@@ -370,4 +371,5 @@ int main(int argc, char* argv[]) {
 
     init_storage(argv[1], argv[3], 9821);
     check_file_system(argv[3]);
+    return EXIT_SUCCESS;
 }

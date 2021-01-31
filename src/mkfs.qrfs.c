@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <errno.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -35,7 +36,7 @@ int init_file_system() {
 
     if(file_data == NULL) {
         perror("Error al solicitar memoria con malloc.\n");
-        return EXIT_FAILURE;
+        return -ENOMEM;
     }
 
     memset(file_data, 0, mkfs_file_size);
@@ -267,7 +268,7 @@ int main(int argc, char* argv[]) {
     if(argc != 3) {
         usage();
         perror("Error en los argumentos.\n");
-        return(-1);
+        return(-EINVAL);
     }
 
     mkfs_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
@@ -276,5 +277,5 @@ int main(int argc, char* argv[]) {
     init_storage(mkfs_qrfolder_path, mkfs_password, mkfs_file_size);
 
     init_file_system();
-    return 0;
+    return EXIT_SUCCESS;
 }

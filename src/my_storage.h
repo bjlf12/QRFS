@@ -78,14 +78,4 @@ void get_image_data(const char *name, int *width, int *height, void **raw);
 
 gdImagePtr qrcode_png(QRcode *code, int fg_color[3], int bg_color[3], int size, int margin);
 
-/**/
-
-int write_super_data(void *super_block_data);
-
-void *read_inode_bitmap();
-
-void *read_block_bitmap();
-
-void *read_inode();
-
 #endif //QRFS_MY_STORAGE_H
