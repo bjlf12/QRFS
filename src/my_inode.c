@@ -1,6 +1,6 @@
-//
-// Created by estudiante on 18/1/21.
-//
+/*
+ *
+ */
 
 #include <unistd.h>
 #include <string.h>
@@ -81,9 +81,8 @@ int set_attributes_and_update(my_dirent *de, char *name, mode_t mode, bool isDir
     inode->size = 0;
     inode->direct[0] = freeb;
     //update map and inode
-    add_inode(freei, inode);
+    update_inode(freei, inode);
 
     free(inode);
-    //update_blk(); TODO revisar si es necesario
     return EXIT_SUCCESS;
 }

@@ -2,16 +2,13 @@
  *
  */
 
-// TODO Chequeo de consistencia
-
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <string.h>
 #include <math.h>
 
 #include "my_inode.h"
 #include "my_storage.h"
+
+int mkfs_file_size;
 
 int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent);// blocks_consistency_check
 
@@ -28,20 +25,24 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
         if(is_dir) {
             temp_dirent = read_data(inode->direct[index]);
             if(temp_dirent == NULL) {
-                //TODO hacer
-                perror("Error al leer datos con la función read_data.\n");
-                return EXIT_FAILURE;
+
+                perror("Error al leer datos con la función read_data.");
+                return -EXIT_FAILURE;
             }
             blocks_consistency_check_aux(&temp, temp_dirent); //FREE
-            //free(temp_dirent);
+            free(temp_dirent); //TODO le puse esto
         }
         temp[inode->direct[index]] += 1;
     }
 
     if(index == NUM_DIRECT_ENT) { // TODO fijarse si inicia en 0 la ostia
-        //TODO indir
+
         uint32_t *indir1 = read_data(inode->indir_1);
-        //if(NULL)
+        if(indir1 == NULL) {
+            perror("Error al leer datos con la función read_data.");
+            return -EXIT_FAILURE;
+        }
+
         int index2;
         for(index2=0; index2< PTRS_PER_BLK; ++index2) {
 
@@ -50,16 +51,25 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
             }
             if(is_dir) {
                 temp_dirent = read_data(indir1[index2]);
+                if(temp_dirent == NULL) {
+                    perror("Error al leer datos con la función read_data.");
+                    return -EXIT_FAILURE;
+                }
                 blocks_consistency_check_aux(&temp, temp_dirent); //FREE
-                //free(temp_dirent);
+                free(temp_dirent);
             }
             temp[indir1[index2]] += 1;
         }
+        free(indir1);
 
         if(index2 == PTRS_PER_BLK) {
-            //TODO indir
+
             uint32_t *indir2 = read_data(inode->indir_2);
-            //if(NULL)
+            if(indir2 == NULL) {
+                perror("Error al leer datos con la función read_data.");
+                return -EXIT_FAILURE;
+            }
+
             for(int i=0; i< PTRS_PER_BLK; ++i) {
 
                 if(!indir2[i]) {
@@ -72,6 +82,7 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
                 }
                 temp[indir2[i]] += 1;
             }
+            free(indir2);
         }
     }
 }
@@ -87,7 +98,7 @@ int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent) {
         }
         temp_inode = get_inode(dirent[i].inode);
         blocks_consistency_check(&temp, temp_inode, dirent[i].isDir);
-        //free(temp_inode);
+        free(temp_inode);
     }
 }
 
@@ -103,21 +114,26 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
         if(!inode->direct[index]) {
             break; // Creo que puede haber un 0 de por medio
         }
-        //if(is_dir) {
-            temp_dirent = read_data(inode->direct[index]);
-            if(temp_dirent == NULL) {
-                //TODO hacer
-                perror("Error al leer datos con la función read_data.\n");
-                return EXIT_FAILURE;
-            }
-            inodes_consistency_check_aux(&temp, temp_dirent); //FREE
-            //free(temp_dirent);
-        //}
+
+        temp_dirent = read_data(inode->direct[index]);
+        if(temp_dirent == NULL) {
+
+            perror("Error al leer datos con la función read_data.");
+            return -EXIT_FAILURE;
+        }
+        inodes_consistency_check_aux(&temp, temp_dirent); //FREE
+        free(temp_dirent);
     }
+
     if(is_dir && index == NUM_DIRECT_ENT) { // TODO fijarse si inicia en 0 la ostia
-        //TODO indir
+
         uint32_t *indir1 = read_data(inode->indir_1);
-        //if(NULL)
+        if(indir1 == NULL) {
+
+            perror("Error al leer datos con la función read_data.");
+            return -EXIT_FAILURE;
+        }
+
         int index2;
         for(index2=0; index2< PTRS_PER_BLK; ++index2) {
 
@@ -126,13 +142,19 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
             }
             temp_dirent = read_data(indir1[index2]);
             inodes_consistency_check_aux(&temp, temp_dirent); //FREE
-            //free(temp_dirent); tODO
+            free(temp_dirent);
         }
+        free(indir1);
 
         if(index2 == PTRS_PER_BLK) {
-            //TODO indir
+
             uint32_t *indir2 = read_data(inode->indir_2);
-            //if(NULL)
+            if(indir2 == NULL) {
+
+                perror("Error al leer datos con la función read_data.");
+                return -EXIT_FAILURE;
+            }
+
             for(int i=0; i< PTRS_PER_BLK; ++i) {
 
                 if(!indir2[i]) {
@@ -140,8 +162,9 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
                 }
                 temp_dirent = read_data(indir2[i]);
                 inodes_consistency_check_aux(&temp, temp_dirent); //FREE
-                // free(temp_dirent)
+                free(temp_dirent);
             }
+            free(indir2);
         }
     }
 }
@@ -158,17 +181,18 @@ int inodes_consistency_check_aux(int **inodes_in_use, my_dirent *dirent) {
         if(dirent[i].isDir) {
             temp_inode = get_inode(dirent[i].inode);
             inodes_consistency_check(&temp, temp_inode, dirent[i].isDir);
+            free(temp_inode);
         }
         temp[dirent[i].inode] += 1;
-        //free(temp_inode);
     }
 }
 
 int check_file_system(char *user_password) {
 
-    char *data = malloc(1024*10);
-    memset(data, 0, 1024*10);
+    char *data = malloc(mkfs_file_size); // TODO
+    memset(data, 0, mkfs_file_size);
     void *ptr = (void *)data;
+
     for(int i=SUPER_BLOCK_NUM; i<10; ++i) {
 
         memcpy(ptr, read_data(i), 1024);
@@ -218,7 +242,7 @@ int check_file_system(char *user_password) {
 
     my_inode *inodes = ptr2;
 
-    printf("1: %d\n", inodes[0].uid);
+    printf("1: %d\n", inodes[0].uid); //TODO quitar printfs
     printf("2: %d\n", inodes[1].mode);
     printf("3: %d\n", inodes[2].uid);
     printf("4: %d\n", inodes[3].uid);
@@ -248,16 +272,11 @@ int check_file_system(char *user_password) {
     my_inode *root_inode = get_inode(super->root_inode);
     printf("Block root: %d\n", root_inode->direct[0]);
 
-    //my_dirent *dirent_root;
-
-    blocks_consistency_check(&blocks_in_use, root_inode, true);
-    for(int i=0; i<first_usable_block; ++i) {
-        blocks_in_use[i] = 1;
+    if(blocks_consistency_check(&blocks_in_use, root_inode, true) < 0) {
+        perror("Error al realizar el chequeo de consistencia de bloques.");
     }
 
-    //dirent_root = read_data(dirent_inode->direct[0]);
-
-    //blocks_consistency_check_aux(&blocks_in_use, dirent_root);
+    for(int i=0; i<first_usable_block; ++i) blocks_in_use[i] = 1;
 
     for(int i=0; i<NUMBER_OF_DATABLOCKS; ++i) {
 
@@ -268,19 +287,19 @@ int check_file_system(char *user_password) {
 
     for(int i=0; i<NUMBER_OF_DATABLOCKS; ++i) {
         if(blocks_in_use[i] > 1 || free_blocks[i] > 1) {
-            perror("Se ha encontrado un duplicado de bloques en el sistema de archivos. ");
+            perror("Se ha encontrado un duplicado de bloques en el sistema de archivos.");
             printf("Bloque encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -EXIT_FAILURE;
         }
         if(blocks_in_use[i] && free_blocks[i]) {
-            perror("Se ha encontrado un bloque marcado como libre, pero siendo parte de un inodo. ");
+            perror("Se ha encontrado un bloque marcado como libre, siendo parte de un inodo.");
             printf("Bloque encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -EXIT_FAILURE;
         }
         if(!blocks_in_use[i] && !free_blocks[i]) {
-            perror("Se ha encontrado un bloque marcado como no libre, pero sin ser parte de ningún inodo. ");
+            perror("Se ha encontrado un bloque marcado como usado, sin ser parte de ningún inodo.");
             printf("Bloque encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -EXIT_FAILURE;
         }
     }
     printf("Los bloques en el sistema de archivos se encuentran en un estado consistente.\n");
@@ -290,10 +309,12 @@ int check_file_system(char *user_password) {
 
     int first_inodes = super->root_inode+1;
 
-    inodes_consistency_check(&inodes_in_use, root_inode, true); //Manejar el valor de retorno TODO
-    for(int i=0; i<first_inodes; ++i) {
-        inodes_in_use[i] = 1;
+    if(inodes_consistency_check(&inodes_in_use, root_inode, true) <0) {
+
+        perror("Error al realizar el chequeo de consistencia de inodos.");
     }
+
+    for(int i=0; i<first_inodes; ++i) inodes_in_use[i] = 1;
 
     for(int i=0; i<NUMBER_OF_INODES; ++i) {
 
@@ -306,68 +327,46 @@ int check_file_system(char *user_password) {
         if(inodes_in_use[i] > 1 || free_inodes[i] > 1) {
             perror("Se ha encontrado un duplicado de inodos en el sistema de archivos.");
             printf("Inodo encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -EXIT_FAILURE;
         }
         if(inodes_in_use[i] && free_inodes[i]) {
-            perror("Se ha encontrado un inodo marcado como libre, pero siendo parte de un directorio.");
+            perror("Se ha encontrado un inodo marcado como libre, siendo un archivo en el sistema.");
             printf("Inodo encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -EXIT_FAILURE;
         }
         if(!inodes_in_use[i] && !free_inodes[i]) {
-            perror("Se ha encontrado un inodo marcado como no libre, pero sin ser encontrado en ningún directorio.");
+            perror("Se ha encontrado un inodo marcado como utilizado, sin ser encontrado en ningún directorio.");
             printf("Inodo encontrado: %d\n", i);
-            return EXIT_FAILURE;
+            return -EXIT_FAILURE;
         }
     }
     printf("El sistema de archivos posee todos sus inodos en un estado consistente.\n");
 
-
-    /*my_dirent *dirent_root = (void *)(data + ((inodes[0].direct[0])*1024));
-
-    printf("%d\n", dirent_root->isDir);
-
-    my_dirent *dirent_dir = (void *)(data + ((inodes[2].direct[0])*1024));
-
-    bloque_prueba *b_prueb = (void *)data;
-
-    ptr2 += 1024;
-
-    char *dataf1 = (void *)(data + ((inodes[1].direct[0])*1024));*/
-
     printf("Se ha terminado el chequeo de consistencia, el sistema de archivos se encuentra correctamente.\n");
 
-    free(data);
+    free(data); //TODO frees
+
+    return EXIT_SUCCESS;
 }
 
-void usage() {
+void usage(char *arg0) {
 
+    printf("Uso: %s directorio_qr/ qr_inicial constraseña\n", arg0);
 }
 
 int main(int argc, char* argv[]) {
 
     if(argc != 4) {
-        usage();
-        perror("Error en los argumentos.\n");
-        return(-1);
+        usage(argv[0]);
+        perror("Error en los argumentos.");
+        return(-EXIT_FAILURE);
     }
-    /*FILE *data = fopen("algonuevo", "w+");
-    fprintf(data, "%c", 1);
-    //memcpy(data, '\0'+1, 1024);
 
-    fclose(data);*/
+    char *mkfs_qrfolder_path = argv[1];
+    char *initial_qr = argv[2];
+    char *mkfs_password = argv[3];
+    mkfs_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
 
-    /*int file = open("nombrealgo", O_WRONLY|O_CREAT|O_TRUNC, 0777);
-    char *data = malloc(100);
-    void *ptr = (void *)data;*/
-
-    /*struct nom *n= ptr;
-    n->x = 1;
-    n->y = 20;*/
-
-    //memcpy(ptr, 'm', 4);
-    //write(file, data, 100);
-    //close(file);
-
-    init_storage(argv[1], argv[3], 9821);
-    check_file_system(argv[3]);
+    init_storage(mkfs_qrfolder_path, mkfs_password, mkfs_file_size);
+    check_file_system(mkfs_password);
 }
