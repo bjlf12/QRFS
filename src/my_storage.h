@@ -54,7 +54,7 @@ size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int 
 
 my_inode *get_inode(int inode_id);
 
-int add_inode(int inode_id, my_inode *to_update_inode);
+int update_inode(int inode_id, my_inode *to_update_inode);
 
 int find_in_dir(my_dirent *dir_entry, char *filename);
 

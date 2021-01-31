@@ -11,7 +11,6 @@
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <pthread.h>
 #include <errno.h>
 
 #include "my_inode.h"
@@ -22,8 +21,7 @@
 #define FG_COLOR {0,0,0}
 #define QR_SIZE 1000
 #define QR_MARGIN 5
-
-//pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#define QR_VERSION 23
 
 void init_storage(char *new_qrfolder_path, char *new_password, int new_file_size) {
 
@@ -36,7 +34,6 @@ void init_storage(char *new_qrfolder_path, char *new_password, int new_file_size
 
 int write_total_data(char *total_file_data) {
 
-    //pthread_mutex_lock(&mutex);
     printf("Escribiendo todos los datos del sistema de archivos.\n");
     FILE *file_d;
     QRcode *qrcode;
@@ -54,18 +51,16 @@ int write_total_data(char *total_file_data) {
     while(size_remaining) {
 
         memcpy(temp, file_ptr, MY_BLOCK_SIZE);
-        qrcode = QRcode_encodeData(MY_BLOCK_SIZE, temp, 23, QR_ECLEVEL_L);
+        qrcode = QRcode_encodeData(MY_BLOCK_SIZE, temp, QR_VERSION, QR_ECLEVEL_L);
         if (qrcode == NULL) {
-            perror("Error al crear el código QR en QRcode_encodeData.\n");
-            //pthread_mutex_unlock(&mutex);
-            return -EXIT_FAILURE; //TODO no se cual codigo es correcto ENODATAo EIO?
+            perror("Error al crear el código QR en QRcode_encodeData.");
+            return -ENOMEM;
         }
 
         sprintf(file_name, "%sQRFS-%d", qrfolder_path, block_counter++);
         file_d = fopen(file_name, "w+");
         if (file_d == NULL) {
-            perror("No se pudo crear el archivo del QR en fopen.\n");
-            //pthread_mutex_unlock(&mutex);
+            perror("No se pudo crear el archivo del QR en fopen.");
             return -EIO;
         }
 
@@ -80,22 +75,12 @@ int write_total_data(char *total_file_data) {
         if(size_remaining < 0) size_remaining = 0;
     }
 
-    /*FILE *f = fopen("algo", "w+");
-    fwrite(total_file_data, file_size, file_size, f);
-    fclose(f);*/
-
-    int fd = open("algo", O_WRONLY|O_CREAT|O_TRUNC, 0777);
-    write(fd, total_file_data, NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE);
-    close(fd);
-
     printf("Terminando de escribir los datos del sistema de archivos.\n");
-    //pthread_mutex_unlock(&mutex);
     return EXIT_SUCCESS;
 }
 
 int write_data(void *block_data, int position) {
 
-    //pthread_mutex_lock(&mutex);
     printf("Comenzando a escribir información en el bloque: %d.\n", position);
     FILE *file_d;
     QRcode *qrcode;
@@ -104,24 +89,17 @@ int write_data(void *block_data, int position) {
     int int_fg_color[3] = FG_COLOR;
 
     char file_name[MY_FILENAME_SIZE];
-    /*
-    if(block_data.len() != MY_BLOCK_SIZE) {
-        perror("El largo de la información a escribir no es correcto.\n");
-        return -EXIT_FAILURE;
-    }*/
 
-    qrcode = QRcode_encodeData(MY_BLOCK_SIZE, block_data, 23, QR_ECLEVEL_L);
+    qrcode = QRcode_encodeData(MY_BLOCK_SIZE, block_data, QR_VERSION, QR_ECLEVEL_L);
     if (qrcode == NULL) {
-        perror("Error al crear el código QR.\n");
-        //pthread_mutex_unlock(&mutex);
+        perror("Error al crear el código QR.");
         return -EXIT_FAILURE;
     }
 
     sprintf(file_name, "%sQRFS-%d", qrfolder_path, position);
     file_d = fopen(file_name, "w+");
     if (file_d == NULL) {
-        perror("No se pudo crear el archivo del QR en fopen.\n");
-        //pthread_mutex_unlock(&mutex);
+        perror("No se pudo crear el archivo del QR en fopen.");
         return -EIO;
     }
 
@@ -132,18 +110,18 @@ int write_data(void *block_data, int position) {
     fclose(file_d);
 
     printf("Terminando de escribir la información de un bloque.\n");
-    //pthread_mutex_unlock(&mutex);
     return EXIT_SUCCESS;
 }
 
 void *read_data(int block_num) {
 
+    printf("Leyendo la información del bloque: %d.\n", block_num);
+
     if(block_num > NUMBER_OF_DATABLOCKS) {
+        perror("El número de bloque sobrepasa el límite actual.");
         return NULL;
     }
 
-    //pthread_mutex_lock(&mutex);
-    printf("Leyendo la información del bloque: %d.\n", block_num);
     /* create a reader */
     zbar_image_scanner_t *scanner = zbar_image_scanner_create();
 
@@ -179,75 +157,78 @@ void *read_data(int block_num) {
     char *to_return_data = malloc(1024);
     if(to_return_data == NULL) {
         perror("Error al asiganar memoria en read_data\n");
-        return NULL; // o EXIT
+        return NULL; 
     }
-
     memcpy(to_return_data, data, 1024);
-
-    /*int fd = open("algo", O_WRONLY|O_CREAT|O_TRUNC, 0777);
-    write(fd, data, 1024);
-    close(fd);*/
-    //printf("decoded %s symbol \"%s\"\n",
-    //zbar_get_symbol_name(typ), data);
-    //}
 
     /* clean up */
     zbar_image_destroy(image);
     zbar_image_scanner_destroy(scanner);
 
     printf("Finalizando de leer la información de un bloque.\n");
-    //pthread_mutex_unlock(&mutex);
     return (void *)to_return_data;
 }
 
 void read_file_data(int block_num, char *buf, size_t len, size_t offset) {
 
     printf("Leyendo la información de un archivo en el bloque: %d.\n", block_num);
-    my_dirent *entries; //my_dirent
-    //memset(entries, 0, MY_BLOCK_SIZE * sizeof(char));
+
+    if(block_num > NUMBER_OF_DATABLOCKS) {
+        perror("El número de bloque sobrepasa el límite actual.");
+        return;
+    }
+
+    my_dirent *entries;
 
     entries = read_data(block_num);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        return; // todo NULL?
+        perror("Error al leer las entradas de directorio en read_data.");
+        return;
     }
 
     memcpy(buf, entries + offset, len);
-    free(entries); //TODO revisar
+    free(entries);
 
-    printf("Terminando de leer la información de un archivo.\n");
+    printf("Terminando de leer la información de un archivo.");
 }
 
 void write_file_data(int block_num, const char *buf, size_t len, size_t offset) {
 
     printf("Comenzando a escribir la información de un archivo en el bloque: %d.\n", block_num);
+
+    if(block_num > NUMBER_OF_DATABLOCKS) {
+        perror("El número de bloque sobrepasa el límite actual.");
+        return;
+    }
+
     char *entries;
-    //memset(entries, 0, MY_BLOCK_SIZE * sizeof(char)); //TODO sí es char, cambiar el nombre
 
     entries = read_data(block_num);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        return; //todo NULL?
+        perror("Error al leer las entradas de directorio en read_data.");
+        return;
     }
 
     memcpy(entries + offset, buf, len);
 
     if(write_data(entries, block_num) < 0) {
-        perror("Error al escribit las entradas de directorio en write_data.\n");
-        return; //todo NULL?
+        perror("Error al escribit las entradas de directorio en write_data.");
+        return;
     };
 
-    printf("Terminando de escribir la información de un archivo.\n");
+    printf("Terminando de escribir la información de un archivo.");
 }
 
 int set_inode_bitmap(int inode_num) {
 
     printf("Marcando el bit %d del bitmap de inodos.\n", inode_num);
+
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
+
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
@@ -255,16 +236,20 @@ int set_inode_bitmap(int inode_num) {
 
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
-        perror("Error al obtener memoria para el bitmap de inodos en malloc.\n");
+        perror("Error al obtener memoria para el bitmap de inodos en malloc.");
         return -ENOMEM;
     }
 
     void *ptr = (void *)inode_map_data;
     fd_set *inode_map = ptr;
+    void *temp_inode_map;
 
     for(int i=0; i < super_block->inode_map_sz; ++i) {
-        memcpy(ptr, read_data(inode_map_position+i), MY_BLOCK_SIZE); //TODO Debería guardar esto para hacerle el free??
+        temp_inode_map = read_data(inode_map_position+i);
+        memcpy(ptr, temp_inode_map, MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
+
+        free(temp_inode_map);
         ptr += MY_BLOCK_SIZE;
     }
 
@@ -272,26 +257,43 @@ int set_inode_bitmap(int inode_num) {
 
     block_cipher((void **)&inode_map_data, key);
 
-    if(write_data(inode_map_data, inode_map_position) < 0) { // TODO hacer que si son más de un bloque hacerlo en un for
-        perror("Error al escribir el bitmap de inodos en write_data.\n");
-        return -EIO;
+    ptr = (void *)inode_map_data;
+    for(int i=0; i < super_block->inode_map_sz; ++i) {
+        if(write_data(ptr, inode_map_position+i) < 0) {
+            perror("Error al escribir el bitmap de inodos en write_data.");
+            return -EIO;
+        }
+
+        ptr += MY_BLOCK_SIZE;
     }
+
+    /*if(write_data(inode_map_data, inode_map_position) < 0) { // TODO hacer que si son más de un bloque hacerlo en un for
+        perror("Error al escribir el bitmap de inodos en write_data.");
+        return -EIO;
+    }*/
 
     free(super_block);
     free(inode_map_data);
 
-    printf("Terminando de marcar un bit en el bitmap de inodos.\n");
+    printf("Terminando de marcar un bit en el bitmap de inodos.");
     return EXIT_SUCCESS;
 }
 
 int set_block_bitmap(int block_num) {
 
     printf("Marcando el bit %d del bitmap de bloques.\n", block_num);
+
+    if(block_num > NUMBER_OF_DATABLOCKS) {
+        perror("El número de bloque sobrepasa el límite actual.");
+        return -EXIT_FAILURE;
+    }
+
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el super bloque en read_data.\n");
+        perror("Error al leer el super bloque en read_data.");
         return -EIO;
     }
+
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
@@ -299,7 +301,7 @@ int set_block_bitmap(int block_num) {
 
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de bloques en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de bloques en malloc.");
         return -ENOMEM;
     }
 
@@ -316,15 +318,25 @@ int set_block_bitmap(int block_num) {
 
     block_cipher((void **)&block_map_data, key);
 
-    if(write_data(block_map_data, block_map_position) < 0) {
-        perror("Error al escribir el bitmap de bloques en write_data.\n");
-        return -EIO;
+    ptr = (void *)block_map_data;
+    for(int i=0; i < super_block->inode_map_sz; ++i) {
+        if(write_data(ptr, block_map_position+i) < 0) {
+            perror("Error al escribir el bitmap de inodos en write_data.");
+            return -EIO;
+        }
+
+        ptr += MY_BLOCK_SIZE;
     }
+
+    /*if(write_data(block_map_data, block_map_position) < 0) {
+        perror("Error al escribir el bitmap de bloques en write_data.");
+        return -EIO;
+    }*/
 
     free(super_block);
     free(block_map_data);
 
-    printf("Terminando de marcar un bit del bitmap de bloques.\n");
+    printf("Terminando de marcar un bit del bitmap de bloques.");
     return EXIT_SUCCESS;
 }
 
@@ -333,7 +345,8 @@ int is_set_inode_bitmap(int inode_num) {
     printf("Comprobando si el bit %d del bitmap de inodos se encuentra activado.\n", inode_num);
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
@@ -343,7 +356,8 @@ int is_set_inode_bitmap(int inode_num) {
 
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de inodos en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de inodos en malloc.");
+
         return -ENOMEM;
     }
 
@@ -370,7 +384,7 @@ int is_set_block_bitmap(int block_num) {
     printf("Comprobando si el bit %d del bitmap de bloques se encuentra activado.\n", block_num);
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
@@ -380,7 +394,7 @@ int is_set_block_bitmap(int block_num) {
 
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de bloques en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de bloques en malloc.");
         return -ENOMEM;
     }
     void *ptr = (void *)block_map_data;
@@ -406,9 +420,10 @@ int clear_inode_bitmap(int inode_num) {
     printf("Limpiando el bit %d del bitmap de inodos.\n", inode_num);
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
+
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
@@ -416,7 +431,7 @@ int clear_inode_bitmap(int inode_num) {
 
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de inodos en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de inodos en malloc.");
         return -ENOMEM;
     }
 
@@ -433,10 +448,20 @@ int clear_inode_bitmap(int inode_num) {
 
     block_cipher((void **)&inode_map_data, key);
 
-    if(write_data(inode_map_data, inode_map_position) < 0) { //TODO hacer en un for por super_block->inode_map_sz
-        perror("Error al escribir los datos del bitmap de inodos en write_data.\n");
-        return -EIO;
+    ptr = (void *)inode_map_data;
+    for(int i=0; i < super_block->inode_map_sz; ++i) {
+        if(write_data(ptr, inode_map_position+i) < 0) {
+            perror("Error al escribir el bitmap de inodos en write_data.");
+            return -EIO;
+        }
+
+        ptr += MY_BLOCK_SIZE;
     }
+
+    /*if(write_data(inode_map_data, inode_map_position) < 0) { //TODO hacer en un for por super_block->inode_map_sz
+        perror("Error al escribir los datos del bitmap de inodos en write_data.");
+        return -EIO;
+    }*/
 
     free(super_block);
     free(inode_map_data);
@@ -448,9 +473,15 @@ int clear_inode_bitmap(int inode_num) {
 int clear_block_bitmap(int block_num) {
 
     printf("Limpiando el bit %d del bitmap de bloques.\n", block_num);
+
+    if(block_num > NUMBER_OF_DATABLOCKS) {
+        perror("El número de bloque sobrepasa el límite actual.");
+        return -EXIT_FAILURE;
+    }
+
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
@@ -460,11 +491,11 @@ int clear_block_bitmap(int block_num) {
 
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if (block_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de bloques en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de bloques en malloc.");
         return -ENOMEM;
     }
 
-    void *ptr = (void *) block_map_data;
+    void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
 
     for (int i = 0; i < super_block->block_map_sz; ++i) {
@@ -477,7 +508,7 @@ int clear_block_bitmap(int block_num) {
     block_cipher((void **)&block_map, key);
 
     if (write_data(block_map_data, block_map_position) < 0) {
-        perror("Error al escribir la información del bitmap de bloques en write_data.\n");
+        perror("Error al escribir la información del bitmap de bloques en write_data.");
         return -EIO;
     }
 
@@ -488,11 +519,11 @@ int clear_block_bitmap(int block_num) {
     return EXIT_SUCCESS;
 }
 
-int get_free_block() { //TODO leer de un vrgazy comprobar
+int get_free_block() {
 
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
@@ -500,9 +531,9 @@ int get_free_block() { //TODO leer de un vrgazy comprobar
 
     int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
 
-    char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE); //TODO cambiar a fd_set
+    char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de bloques en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de bloques en malloc.");
         return -ENOMEM;
     }
     void *ptr = (void *)block_map_data;
@@ -516,12 +547,7 @@ int get_free_block() { //TODO leer de un vrgazy comprobar
 
     for(int i=0; i<NUMBER_OF_DATABLOCKS; ++i) {
         if(!FD_ISSET(i, block_map)) {
-            /*char *data = read_data(i); // TODO cambiar malloc por esto
-            if (data == NULL) {
-                perror("");
-                return -EIO;
-            }
-            set_block_bitmap(i);*/
+
             FD_SET(i, block_map);
 
             block_cipher((void **)&block_map_data, key);
@@ -534,22 +560,10 @@ int get_free_block() { //TODO leer de un vrgazy comprobar
         }
     }
 
-    //write_data(block_map_data, block_map_position); TODO cambié esto, creo que no es necesario porque no se hizo set
-
     free(super_block);
     free(block_map_data);
 
-    return -ENOSPC;// // TODO revisar EXIT_FAILURE
-
-
-    /*for (int i = 0; i < NUMBER_OF_DATABLOCKS; i++) {
-        if (!is_set_block_bitmap(i)) {
-
-            set_block_bitmap(i);
-            return i;
-        }
-    }
-    return -ENOSPC;// // TODO revisar EXIT_FAILURE*/
+    return -ENOSPC;
 }
 
 /**
@@ -558,10 +572,9 @@ int get_free_block() { //TODO leer de un vrgazy comprobar
  */
 int get_num_free_block() {
 
-
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
@@ -571,7 +584,7 @@ int get_num_free_block() {
 
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de bloques en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de bloques en malloc.");
         return -ENOMEM;
     }
     void *ptr = (void *)block_map_data;
@@ -594,16 +607,6 @@ int get_num_free_block() {
     free(block_map_data);
 
     return count;
-
-     /*
-
-    int count = 0;
-    for (int i = 0; i < NUMBER_OF_DATABLOCKS; ++i) {
-        if (!is_set_block_bitmap(i)) { //TODO leer de un vrgazy comprobar
-            ++count;
-        }
-    }
-    return count;*/
 }
 
 /**
@@ -615,9 +618,10 @@ int get_free_inode() {
 
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
+
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
@@ -625,7 +629,7 @@ int get_free_inode() {
 
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
-        perror("Error al asignar memoria para el bitmap de inodos en malloc.\n");
+        perror("Error al asignar memoria para el bitmap de inodos en malloc.");
         return -ENOMEM;
     }
 
@@ -637,11 +641,6 @@ int get_free_inode() {
         block_decipher((void **)&ptr, key);
         ptr += MY_BLOCK_SIZE;
     }
-
-    printf("Is set inode (0): %d\n", FD_ISSET(0, inode_map));
-    printf("Is set inode (1): %d\n", FD_ISSET(1, inode_map));
-    printf("Is set inode (2): %d\n", FD_ISSET(2, inode_map));
-    printf("Is set inode (3): %d\n", FD_ISSET(3, inode_map));
 
     for(int i=super_block->root_inode+1; i < NUMBER_OF_INODES; ++i) {
         if(!FD_ISSET(i, inode_map)) {
@@ -657,28 +656,17 @@ int get_free_inode() {
         }
     }
 
-    // write_data(inode_map_data, inode_map_position); TODO cambie esto creo que no necesario
-
     free(super_block);
     free(inode_map_data);
 
     return -ENOSPC;
-
-    /*for (int i=super_block->root_inode+1; i < NUMBER_OF_INODES; ++i) { // TODO revisar por qué empieza en 2
-        if (!is_set_inode_bitmap(i, inode_map)) { //TODO leer de un vrgazy comprobar
-            set_inode_bitmap(i);
-            return i;
-        }
-    }
-    return -ENOSPC; // EXIT_FAILURE*/
 }
 
 size_t read_indir1(int block_num, char *buf, size_t length, size_t offset) {
-    uint32_t *blk_indices;
 
-    blk_indices = read_data(block_num);
+    uint32_t *blk_indices  = read_data(block_num);
     if (blk_indices == NULL) {
-        perror("Error al leer un bloque de índices en read_data.\n");
+        perror("Error al leer un bloque de índices en read_data.");
         return -EIO;
     }
 
@@ -705,11 +693,9 @@ size_t read_indir1(int block_num, char *buf, size_t length, size_t offset) {
 
 size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int indir1_size) {
 
-    uint32_t *blk_indices;
-
-    blk_indices = read_data(block_num);
+    uint32_t *blk_indices = read_data(block_num);
     if (blk_indices == NULL) {
-        perror("Error al leer un bloque de índices en read_data.\n");
+        perror("Error al leer un bloque de índices en read_data.");
         return -EIO;
     }
 
@@ -735,12 +721,10 @@ size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int i
 }
 
 size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
-    uint32_t *blk_indices;
-    //memset(blk_indices, 0, PTRS_PER_BLK * sizeof(uint32_t));
 
-    blk_indices = read_data(blk);
-    if (blk_indices == NULL) {
-        perror("Error al leer un bloque de índices en read_data.\n");
+    uint32_t *blk_indices  = read_data(blk);
+    if (blk_indices == NULL) 
+        perror("Error al leer un bloque de índices en read_data.");
         return -EIO;
     }
 
@@ -757,9 +741,10 @@ size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
             blk_indices[blk_num] = freeb;
             //write back
 
-            if(write_data(blk_indices, blk) < 0) {
-                perror("Error al escribir un bloque de índices en write_data.\n");
-            }// Comprobar
+            if(write_data(blk_indices, blk) < 0) { // TODO retstat
+                perror("Error al escribir un bloque de índices en write_data.");
+                return -EIO;
+            }
         }
 
         write_file_data(blk_indices[blk_num], buf, temp, blk_offset);
@@ -773,12 +758,10 @@ size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
 }
 
 size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int indir1_size) {
-    uint32_t *blk_indices;
-    //memset(blk_indices, 0, PTRS_PER_BLK * sizeof(uint32_t));
 
-    blk_indices = read_data(blk);
+    uint32_t *blk_indices = read_data(blk);
     if (blk_indices == NULL) {
-        perror("Error al leer un bloque de índices en read_data.\n");
+        perror("Error al leer un bloque de índices en read_data.");
         return -EIO;
     }
 
@@ -796,9 +779,9 @@ size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int 
             //write back
 
             if(write_data(blk_indices, blk) < 0) {
-                perror("Error al escribir un bloque de índices en write_data.\n");
-                return -EIO; //lo agregue
-            }// Comprobar
+                perror("Error al escribir un bloque de índices en write_data.");
+                return -EIO;
+            }
         }
 
         temp = write_indir1(blk_indices[blk_num], buf, temp, blk_offset);
@@ -810,48 +793,43 @@ size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int 
     return len - len_to_write;
 }
 
-my_inode *get_inode(int inode_id) { // TODO Revisamos
+my_inode *get_inode(int inode_id) {
 
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
-        return NULL; // TODO o exit
+        perror("Error al leer el superbloque en read_data.");
+        return NULL;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
-    // TODO revisar
-    int block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz + super_block->block_map_sz + (inode_id / INODES_PER_BLK);
-
+    int block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz +
+            super_block->block_map_sz + (inode_id / INODES_PER_BLK);
     my_inode *inode_block = read_data(block);
 
     my_inode *to_return = malloc(sizeof(struct my_inode));
 
-    //memcpy(to_return, inode_block[inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK)], sizeof(my_inode));
-
-    void *ptr = inode_block + (inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK)); //Guardar en variable?
+    void *ptr = inode_block + (inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK));
 
     memcpy(to_return, ptr, sizeof(struct my_inode));
 
     free(super_block);
     free(inode_block);
-    // FREE
-    return to_return; // TODO revisar
+    return to_return;
 }
 
-int add_inode(int inode_id, my_inode *to_update_inode) {
+int update_inode(int inode_id, my_inode *to_update_inode) {
 
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
-        return -EIO; // TODO o exit
+        perror("Error al leer el superbloque en read_data.");
+        return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
-    // TODO revisar
-    int block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz + super_block->block_map_sz + (inode_id / INODES_PER_BLK);
-
+    int block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz +
+            super_block->block_map_sz + (inode_id / INODES_PER_BLK);
     my_inode *inode_block = read_data(block);
 
     void *ptr = inode_block + (inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK)); //Guardar en variable?
@@ -860,13 +838,13 @@ int add_inode(int inode_id, my_inode *to_update_inode) {
 
     if(write_data(inode_block, block) <0) {
         perror("Error al escribir el bloque de inodos en write_data");
-        return -EXIT_FAILURE;
+        return -EIO;
     }
 
     free(super_block);
     free(inode_block);
-    // FREE
-    return EXIT_SUCCESS; // TODO revisar o -1
+
+    return EXIT_SUCCESS;
 }
 
 int find_in_dir(my_dirent *dir_entry, char *filename) {
@@ -876,7 +854,7 @@ int find_in_dir(my_dirent *dir_entry, char *filename) {
             return dir_entry[i].inode;
         }
     }
-    return EXIT_SUCCESS; // TODO o -1
+    return false;
 }
 
 /**
@@ -887,11 +865,11 @@ int find_in_dir(my_dirent *dir_entry, char *filename) {
  */
 int find_free_dir(my_dirent *de) {
     for (int i = 0; i < DIR_ENTS_PER_BLK; i++) {
-        if (!de[i].valid) { //TODO revisar si es flecha
+        if (!de[i].valid) {
             return i;
         }
     }
-    return -ENOSPC; // EXIT_FAILURE
+    return -ENOSPC;
 }
 
 /**
@@ -902,8 +880,8 @@ int find_free_dir(my_dirent *de) {
  */
 int is_empty_dir(my_dirent *de) {
     for (int i = 0; i < DIR_ENTS_PER_BLK; i++) {
-        if (de[i].valid) { //REVISAR FLECHA
-            return false; // TODO falso o
+        if (de[i].valid) {
+            return false;
         }
     }
     return true;
@@ -917,38 +895,25 @@ int is_empty_dir(my_dirent *de) {
  *   -ENOENT  - a component of the path is not present.
  *   -ENOTDIR - intermediate component of path not a directory
  *
- *
-int lookup(int inode_id, char *filename) {
-
-    //get corresponding directory
-    my_inode *cur_dir = get_inode(inode_id);
-    //init buff entries
-    my_dirent *entries;
-    //memset(entries, 0, DIR_ENTS_PER_BLK * sizeof(struct fs_dirent));
-    //if (disk->ops->read(disk, cur_dir.direct[0], 1, &entries) < 0) exit(1);
-    entries = read_data(cur_dir->direct[0]);
-    int inode = find_in_dir(entries, filename);
-    return inode == 0 ? -ENOENT : inode; //  EXIT_FAILURE
-}*/
-
+ */
 int lookup_for_filename(int dir_inode_id, char *filename) {
 
     //get corresponding directory
-    my_inode *cur_dir = get_inode(dir_inode_id); //TODO revisar si es con puntero o no
+    my_inode *cur_dir = get_inode(dir_inode_id);
     //init buff entries
-    my_dirent *entries = read_data(cur_dir->direct[0]); // TODO revisar, hay que ponerle un +1 a esto??
+    my_dirent *entries = read_data(cur_dir->direct[0]);
 
     if (entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        exit(1);
+        perror("Error al leer las entradas de directorio en read_data.");
+        return -EIO;
     }
     int inode = find_in_dir(entries, filename);
 
-    free(cur_dir); //TODO revisar
+    free(cur_dir);
     free(entries);
 
     if(!inode) {
-        return -ENOENT; // EXIT_FAILURE
+        return -ENOENT;
     }
     return inode;
 }
@@ -987,7 +952,7 @@ int parse(char *path, char *names[], int nnames) {
         token = strtok(NULL, "/");
     }
 
-    free(dup_path); // TODO revisar
+    free(dup_path);
 
     //if the number of names in the path exceed the maximum
     if (nnames != 0 && count > nnames) return -EXIT_FAILURE; //TODO free names?? era un -1
@@ -999,6 +964,7 @@ int parse(char *path, char *names[], int nnames) {
  * @param arr arr to be freed
  */
 void free_char_array(char *array[], int len) {
+
     for (int i = 0; i < len; i++) {
         free(array[i]);
     }
@@ -1017,24 +983,20 @@ void free_char_array(char *array[], int len) {
  */
 int get_inode_id_from_path(char *path) {
 
-    //quitar if
-    if(!strcmp(path, "/dir")){
-        printf("mkldasmmldkasdslk\n");
+    my_super *super_block = read_data(SUPER_BLOCK_NUM);
+    if (super_block == NULL) {
+        perror("Error al leer el superbloque en read_data.");
+        return -EIO;
     }
 
-    my_super *super_block = read_data(SUPER_BLOCK_NUM); //TODO poner la posición del superblock en constante
-    if (super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
-        return -EIO; // TODO o exit
-    }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
     int root_inode_id = super_block->root_inode;
 
-    if (strcmp(path, "/") == 0 || strlen(path) == 0) return root_inode_id; // TODO Definir eso?
+    if (strcmp(path, "/") == 0 || strlen(path) == 0) return root_inode_id;
     int inode_id = root_inode_id;
     //get number of names
-    int num_names = parse(path, NULL, 0); // TODO Se puede hacer en una línea con el otro.
+    int num_names = parse(path, NULL, 0);
     //if the number of names in the path exceed the maximum, return an error, error type to be fixed if necessary
     if (num_names < 0) return -ENOTDIR; //ENOTDIR
     if (num_names == 0) return root_inode_id;
@@ -1046,24 +1008,20 @@ int get_inode_id_from_path(char *path) {
 
     for (int i = 0; i < num_names; i++) {
         //if token is not a directory return error
-        if (!S_ISDIR(temp_inode->mode)) {    //sys/stat.h
+        if (!S_ISDIR(temp_inode->mode)) {
             free_char_array(names, num_names);
-            return -ENOTDIR; //ENOTDIR
+            return -ENOTDIR;
         }
         //lookup and record inode
         inode_id = lookup_for_filename(inode_id, names[i]);
         if (inode_id < 0) {
             free_char_array(names, num_names);
-            return -ENOENT; //ENOENT
+            return -ENOENT;
         }
-        free(temp_inode); // TODO necesario
-        temp_inode = get_inode(inode_id); // TODO if not num_names-1???
+        free(temp_inode);
+        temp_inode = get_inode(inode_id);
     }
     free_char_array(names, num_names);
-    //if token is not a directory return error //TODO verificar que no hayan errores
-    /*if (!S_ISDIR(temp_inode->mode)) {    //sys/stat.h
-        return -ENOTDIR; // EXIT_FAILURE
-    }*/
 
     free(temp_inode);
     free(super_block);
@@ -1086,14 +1044,14 @@ int get_inode_id_from_path(char *path) {
  */
 int get_inode_id_and_leaf_from_path(char *path, char *leaf) {
 
-    my_super *super_block = read_data(SUPER_BLOCK_NUM); //TODO poner la posición del superblock en constante
+    my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
-        return -EIO; // TODO o exit
+        perror("Error al leer el superbloque en read_data.");
+        return -EIO;
     }
+
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
-
     int root_inode_id = super_block->root_inode;
 
     if (strcmp(path, "/") == 0 || strlen(path) == 0) return root_inode_id;
@@ -1121,14 +1079,13 @@ int get_inode_id_and_leaf_from_path(char *path, char *leaf) {
             free_char_array(names, num_names);
             return -ENOENT; // EXIT_FAILURE
         }
-        free(temp_inode); // TODO necesario
-        temp_inode = get_inode(inode_id); // TODO if not num_names-1???
+        free(temp_inode);
+        temp_inode = get_inode(inode_id);
     }
     strcpy(leaf, names[num_names - 1]);
 
-    //if token is not a directory return error //TODO verificar que no hayan errores
-    if (!S_ISDIR(temp_inode->mode)) {    //sys/stat.h
-        return -ENOTDIR; // EXIT_FAILURE
+    if (!S_ISDIR(temp_inode->mode)) {
+        return -ENOTDIR;
     }
 
     free(temp_inode);
@@ -1145,7 +1102,10 @@ int get_inode_id_and_leaf_from_path(char *path, char *leaf) {
 void get_image_data(const char *name, int *width, int *height, void **raw) {
 
     FILE *file = fopen(name, "rb");
-    if(!file) exit(2);
+    if(!file) {
+        perror("Error al abrir un archivo QR.");
+        return;
+    }
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING,
                                    NULL, NULL, NULL);
     if(!png) exit(3);

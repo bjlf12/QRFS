@@ -2,16 +2,14 @@
  *
  */
 
-// TODO Parse QRs
-// TODO Create
 
 
+#include "config.h"
 #include "mount.qrfs.h"
 #include "my_super.h"
 #include "my_inode.h"
 #include "my_storage.h"
 
-#include <dirent.h> // DIR
 #include <errno.h> //perror and ENOMEM
 #include <fcntl.h> //mode_t
 #include <fuse.h>
@@ -21,19 +19,6 @@
 #include <sys/stat.h> //stat
 #include <unistd.h> // operaciones con dir
 #include <math.h>
-
-#include <ctype.h>
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <fuse.h>
-#include <libgen.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/xattr.h>
 #include <sys/types.h>
 
 /** total size of direct blocks */
@@ -41,24 +26,12 @@ static int DIR_SIZE = MY_BLOCK_SIZE * NUM_DIRECT_ENT;
 static int INDIR1_SIZE = (MY_BLOCK_SIZE / sizeof(uint32_t)) * MY_BLOCK_SIZE;
 static int INDIR2_SIZE = (MY_BLOCK_SIZE / sizeof(uint32_t)) * (MY_BLOCK_SIZE / sizeof(uint32_t)) * MY_BLOCK_SIZE;
 
-void *my_init(struct fuse_conn_info *conn) {
-    /*log_msg("\nmy_init()\n");
+void *my_init(struct fuse_conn_info *conn) { //TODO necesario
 
-    log_conn(conn);
-    log_fuse_context(fuse_get_context());
-    */
     return MY_DATA;
 }
 
-/*static void get_fullpath(char fpath[PATH_MAX], const char *path) { //Ya no??
-    strcpy(fpath, MY_DATA->rootdir);
-    strncat(fpath, path, PATH_MAX); // Direcciones absolutas largas son cortadas aquí.
-
-    //log_msg("    get_fullpath:  rootdir = \"%s\", path = \"%s\", fpath = \"%s\"\n",
-    //        MY_DATA->rootdir, path, fpath);
-}*/
-
-static char *strmode(char *buf, int mode) {
+char *strmode(char *buf, int mode) { //TODO que hacemos con esto printstat
 
     int mask = 0400;
     char *str = "rwxrwxrwx", *retval = buf;
@@ -66,25 +39,24 @@ static char *strmode(char *buf, int mode) {
     for (mask = 0400; mask != 0; str++, mask = mask >> 1)
         *buf++ = (mask & mode) ? *str : '-';
     *buf++ = 0;
+
     return retval;
 }
 
-int my_getattr(const char *path, struct stat *stbuf){ //ia
-    //fs_init(NULL); Creo que si lo hacemos en el main no es necesario.
+int my_getattr(const char *path, struct stat *stbuf){
 
     printf("Obteniendo los atributos del archivo %s con my_getattr.\n", path);
-
-    if(strcmp(path, "/dir") == 0) {
-        printf("Asiesmdkaslmdlskads\n");
-    }
 
     char *dup_path = strdup(path);
     int inode_id = get_inode_id_from_path(dup_path);
     if (inode_id < 0) return inode_id;
     my_inode *inode = get_inode(inode_id);
     cpy_stat(inode, stbuf);
-    free(inode); // TODO revisar
 
+    free(inode);
+    free(dup_path);
+
+    printf("Imprimiendo el estado de un archivo/directorio.\n");
     char mode[16], time[26], *lasts;
     printf("%5lld %s %2d %4d %4d %8lld %s %s\n",
            stbuf->st_blocks, strmode(mode, stbuf->st_mode),
@@ -101,23 +73,22 @@ int my_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 
     //get current and parent inodes
     mode |= S_IFREG;
-    if (!S_ISREG(mode) || strcmp(path, "/") == 0) return -EINVAL; // EXIT_FAILURE
+    if (!S_ISREG(mode) || strcmp(path, "/") == 0) return -EINVAL;
     char *dup_path = strdup(path);
     char name[FILENAME_MAX];
     int inode_id = get_inode_id_from_path(dup_path);
     int parent_inode_id = get_inode_id_and_leaf_from_path(dup_path, name);
-    if (inode_id >= 0) return -EEXIST; // EXIT_FAILURE si queremos que se sobrescriba TODO printf("El archivo ya existe, sobreescribiendo\n");
+
+    if (inode_id >= 0) return -EEXIST; // si queremos que se sobrescriba TODO
+
     if (parent_inode_id < 0) return parent_inode_id;
     //read parent info
     my_inode *parent_inode = get_inode(parent_inode_id);
     if (!S_ISDIR(parent_inode->mode)) return -ENOTDIR; // EXIT_FAILURE
 
-    my_dirent *entries;
-    //memset(entries, 0, DIR_ENTS_PER_BLK * sizeof(my_dirent));
-
-    entries = read_data(parent_inode->direct[0]);
+    my_dirent *entries = read_data(parent_inode->direct[0]);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
+        perror("Error al leer las entradas de directorio en read_data.");
         return -EIO;
     }
 
@@ -126,57 +97,25 @@ int my_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     if (res < 0) return res;
 
     if(write_data(entries, parent_inode->direct[0]) < 0) {
-        perror("Error al escribir una entrada de directorio en write_data.\n");
+        perror("Error al escribir una entrada de directorio en write_data.");
         return -EIO;
-    } // TODO if
+    }
+
+    free(parent_inode);
+    free(entries);
+    free(dup_path);
 
     printf("Terminando de crear un directorio.\n");
     return EXIT_SUCCESS;
 }
-    /*
-    int ret_stat = EXIT_SUCCESS;
-    int fd;
-    char fpath[PATH_MAX];
-
-    //log_msg("\nmy_open(path\"%s\", fi=0x%08x)\n",
-    //        path, fi);
-    get_fullpath(fpath, path);
-
-    fd = open(fpath, fi->flags, mode);
-    if(fd < 0) {
-        perror("Error al utilizar mkfile.\n");
-        ret_stat = -errno;
-    }
-
-    fi->fh = fd;
-
-    return ret_stat;
-}*/
-/*
-int my_mknod(const char *path, mode_t mode, dev_t dev) {
-    int ret_stat;
-    char fpath[PATH_MAX];
-
-    get_fullpath(fpath, path);
-
-    if (S_ISREG(mode)) {
-        ret_stat = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
-        if (ret_stat >= 0)
-            ret_stat = close(ret_stat);
-    } else if (S_ISFIFO(mode))
-        ret_stat = mkfifo(fpath, mode);
-    else
-        ret_stat = mknod(fpath, mode, dev);
-
-    if (ret_stat == -1)
-        return -errno;
-
-    return ret_stat;
-}*/
 
 int my_open(const char *path, struct fuse_file_info *fi) {
 
     printf("Abriendo el archivo %s con la función my_open.\n", path);
+
+    if(!strcmp(path, "file1.txt")) {
+        printf("debug\n");
+    }
 
     char *dup_path = strdup(path);
     int inode_id = get_inode_id_from_path(dup_path);
@@ -184,7 +123,8 @@ int my_open(const char *path, struct fuse_file_info *fi) {
     my_inode *inode = get_inode(inode_id);
     if (S_ISDIR(inode->mode)) return -EISDIR;
     fi->fh = (uint64_t) inode_id;
-    free(inode); //TODO revisar
+
+    free(inode);
     free(dup_path);
 
     printf("Terminando de abrir el archivo.\n");
@@ -207,13 +147,15 @@ size_t my_read_dir(int inode_id, char *buf, size_t length, size_t offset) {
             return length - len_to_read;
         }
 
-        read_file_data(inode->direct[block_num], buf, temp, blk_offset);
+        read_file_data(inode->direct[block_num], buf, temp, blk_offset); // TODO free buf
 
         buf += temp;
         len_to_read -= temp;
         block_num++;
         blk_offset = 0;
     }
+
+    free(inode);
 
     printf("Finalizando de leer los datos de un directorio.\n");
     return length - len_to_read;
@@ -241,6 +183,10 @@ size_t my_read_dir(int inode_id, char *buf, size_t length, size_t offset) {
 int my_read(const char *path, char *buf, size_t length, off_t offset, struct fuse_file_info *fi) {
 
     printf("Leyendo el archivo %s con la función my_read.\n", path);
+
+    if(!strcmp(path, "file1.txt")) {
+        printf("debug\n");
+    }
 
     char *dup_path = strdup(path);
     int inode_id = get_inode_id_from_path(dup_path);
@@ -285,7 +231,7 @@ int my_read(const char *path, char *buf, size_t length, off_t offset, struct fus
     }
 
     free(inode);
-    free(dup_path); //TODO revisar.
+    free(dup_path);
 
     printf("Finalizando de leer los datos de un archivo.\n");
 
@@ -308,8 +254,7 @@ size_t my_write_dir(my_inode **to_write_inode, const char *buf, size_t len, size
         if (!inode->direct[blk_num]) {
             int freeb = get_free_block();
             if (freeb < 0) return len - len_to_write;
-            inode->direct[blk_num] = freeb; // No hace esto?
-            //add_inode(inode_id, inode);
+            inode->direct[blk_num] = freeb;
         }
 
         write_file_data(inode->direct[blk_num], buf, temp, blk_offset);
@@ -376,7 +321,7 @@ int my_write(const char *path, const char *buf, size_t length, off_t offset,
             int freeb = get_free_block();
             if (freeb < 0) return length - len_to_write;
             inode->indir_1 = freeb;
-            add_inode(inode_id, inode);
+            update_inode(inode_id, inode); //Errores??? TODO
         }
         size_t temp = write_indir1(inode->indir_1, buf, len_to_write, (size_t) offset - DIR_SIZE);
         len_to_write -= temp;
@@ -391,7 +336,7 @@ int my_write(const char *path, const char *buf, size_t length, off_t offset,
             int freeb = get_free_block();
             if (freeb < 0) return length - len_to_write;
             inode->indir_2 = freeb;
-            add_inode(inode_id, inode);
+            update_inode(inode_id, inode);
         }
         //len finshed write
         size_t temp = write_indir2(inode->indir_2, buf, len_to_write, (size_t) offset - DIR_SIZE - INDIR1_SIZE, INDIR1_SIZE);
@@ -401,9 +346,7 @@ int my_write(const char *path, const char *buf, size_t length, off_t offset,
 
     if (offset > inode->size) inode->size = offset;
 
-    //update inode and blk
-    add_inode(inode_id, inode); //////////// Estooo
-    //update_blk(); //TODO revisar si es necesario
+    update_inode(inode_id, inode);
 
     free(inode);
     free(dup_path);
@@ -459,12 +402,9 @@ int my_rename(const char *src_path, const char *dst_path) {
     my_inode *parent_inode = get_inode(parent_inode_id);
     if (!S_ISDIR(parent_inode->mode)) return -ENOTDIR;
 
-    my_dirent *entries;
-    //memset(entries, 0, DIR_ENTS_PER_BLK * sizeof(my_dirent));
-
-    entries = read_data(parent_inode->direct[0]);
+    my_dirent *entries = read_data(parent_inode->direct[0]);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
+        perror("Error al leer las entradas de directorio en read_data.");
         return -EIO;
     }
 
@@ -478,9 +418,14 @@ int my_rename(const char *src_path, const char *dst_path) {
 
     //write buff to inode
     if(write_data(entries, parent_inode->direct[0]) < 0) {
-        perror("Error al escribir una entrada de directorio en write_data.\n");
+
+        perror("Error al escribir una entrada de directorio en write_data.");
         return -EIO;
-    } //TODO if
+    }
+    free(parent_inode);
+    free(dup_src_path);
+    free(dup_dst_path);
+    free(entries);
 
     printf("Terminando de cambiar el nombre de un archivo.\n");
     return EXIT_SUCCESS;
@@ -522,8 +467,8 @@ int my_mkdir(const char *path, mode_t mode) {
 
     entries = read_data(parent_inode->direct[0]);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        return -EIO; //No estaba lo agregue
+        perror("Error al leer las entradas de directorio en read_data.");
+        return -EIO;
     }
 
     //assign inode and directory and update
@@ -531,25 +476,17 @@ int my_mkdir(const char *path, mode_t mode) {
     if (res < 0) return res;
 
     if(write_data(entries, parent_inode->direct[0]) < 0) {
-        perror("Error al escribir una entrada de directorio en write_data.\n");
+
+        perror("Error al escribir una entrada de directorio en write_data.");
         return -EIO;
-    } // TODO if
+    }
+
+    free(parent_inode); //TODO free en los return FAIL??
+    free(entries);
+    free(dup_path);
 
     printf("Terminando de crear un directorio.\n");
     return EXIT_SUCCESS;
-    /*
-    int ret_stat;
-    char fpath[PATH_MAX];
-
-    printf("mkdir(%s) with mode <%d>\n", path, mode);
-
-    get_fullpath(fpath, path);
-
-    ret_stat = mkdir(fpath, 0777);
-    if(ret_stat < 0) {
-        perror("Error al utilizar mkdir.\n");
-    }
-    return ret_stat;*/
 };
 
 /**
@@ -586,8 +523,8 @@ int my_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
 
     entries = read_data(inode->direct[0]);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        return -EIO; //todo lo agregue
+        perror("Error al leer las entradas de directorio en read_data.");
+        return -EIO;
     }
 
     for (int i = 0; i < DIR_ENTS_PER_BLK; i++) {
@@ -598,33 +535,11 @@ int my_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset
     }
 
     free(inode);
-    free(entries); //TODO free a los entries
+    free(entries);
+    free(dup_path);
 
     printf("Terminando de leer la informacion de un directorio.\n");
     return EXIT_SUCCESS;
-
-    /**int ret_stat = EXIT_SUCCESS;
-    DIR *dp;
-    struct dirent *de;
-
-    dp = (DIR *) (uintptr_t) fi->fh;
-    de = readdir(dp);
-
-    if (!de) {
-        perror("Error al utilizar readdir.\n"); // Arreglar a perror
-        ret_stat = -errno;
-        return ret_stat;
-    }
-
-    do {
-        //log_msg("calling filler with name %s\n", de->d_name);
-        if (filler(buf, de->d_name, NULL, 0) != 0) {
-            perror("Error al utilizar filler: buffer lleno.\n");
-            return -ENOMEM;
-        }
-    } while ((de = readdir(dp)) != NULL);
-
-    return ret_stat;*/
 };
 
 /**
@@ -650,24 +565,10 @@ int my_opendir(const char *path, struct fuse_file_info *fi) {
     if (!S_ISDIR(get_inode(inode_id)->mode)) return -ENOTDIR; // EXIT_FAILURE
     fi->fh = (uint64_t) inode_id;
 
+    free(dup_path);
+
     printf("Terminando de abrir un directorio.\n");
     return EXIT_SUCCESS;
-
-    /*DIR *dp;
-    int ret_stat = EXIT_SUCCESS;
-    char fpath[PATH_MAX];
-
-    get_fullpath(fpath, path);
-
-    dp = opendir(fpath);    // Retorna un puntero.
-    if(dp == NULL) {
-        perror("Error al utilizar opendir.");
-        ret_stat = -errno;
-    }
-
-    fi->fh = (intptr_t) dp;
-
-    return ret_stat;*/
 }
 
 /**
@@ -691,7 +592,7 @@ int my_rmdir(const char *path) {
 
     //get inodes and check
     char *dup_path = strdup(path);
-    char name[FILENAME_MAX]; //TODO revisar
+    char name[FILENAME_MAX];
     int inode_id = get_inode_id_from_path(dup_path);
     int parent_inode_id = get_inode_id_and_leaf_from_path(dup_path, name);
     my_inode *inode = get_inode(inode_id);
@@ -706,8 +607,8 @@ int my_rmdir(const char *path) {
 
     entries = read_data(inode->direct[0]);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        return -EIO; // lo agregue
+        perror("Error al leer las entradas de directorio en read_data.");
+        return -EIO; 
     }
 
     int res = is_empty_dir(entries);
@@ -719,46 +620,35 @@ int my_rmdir(const char *path) {
 
     entries = read_data(parent_inode->direct[0]);
     if(entries == NULL) {
-        perror("Error al leer las entradas de directorio en read_data.\n");
-        return -EIO; // lo agregue
+        perror("Error al leer las entradas de directorio en read_data.");
+        return -EIO; 
     }
 
     for (int i = 0; i < DIR_ENTS_PER_BLK; i++) {
         if (entries[i].valid && strcmp(entries[i].filename, name) == 0) {
-            memset(&entries[i], 0, sizeof(my_dirent)); //TODO revisar el ampersand
+            memset(&entries[i], 0, sizeof(my_dirent));
         }
     }
     if(write_data(entries, parent_inode->direct[0]) < 0) {
-        perror("Error al escribir una entrada de directorio en write_data.\n");
-        return -EIO; // lo agregue
-    } //TODO if
+
+        perror("Error al escribir una entrada de directorio en write_data.");
+        return -EIO;
+    }
 
     //return blk and clear inode
     clear_block_bitmap(inode->direct[0]);
     clear_inode_bitmap(inode_id);
     memset(inode, 0, sizeof(my_inode));
 
-    //update
-    add_inode(inode_id, inode); //cambiar de add a update
-    //update_blk(); TODO revisar
+    update_inode(inode_id, inode);
 
-    free(dup_path); //TODO free dup
+    free(dup_path);
     free(inode);
     free(parent_inode);
     free(entries);
 
     printf("Terminando de eliminar un directorio.\n");
     return EXIT_SUCCESS;
-
-    /*int ret_stat;
-    char fpath[PATH_MAX];
-
-    get_fullpath(fpath, path);
-    ret_stat = rmdir(fpath);
-    if(ret_stat < 0) {
-        perror("Error al utilizar rmdir.\n");
-    }
-    return ret_stat;*/
 }
 
 /**
@@ -788,8 +678,9 @@ int my_statfs(const char *path, struct statvfs *statv) {
 
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
-        perror("Error al leer el superbloque en read_data.\n");
+        perror("Error al leer el superbloque en read_data.");
         return -EIO; // TODO o exit
+
     }
     int root_inode_id = super_block->root_inode;
     int inode_data_base = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz + super_block->block_map_sz;
@@ -805,16 +696,6 @@ int my_statfs(const char *path, struct statvfs *statv) {
     printf("Terminando de obtener la informacion de un archivo.\n");
     return EXIT_SUCCESS;
 
-    /*int ret_stat = EXIT_SUCCESS;
-    char fpath[PATH_MAX];
-
-    get_fullpath(fpath, path);
-    ret_stat = statvfs(fpath, statv);
-    if(ret_stat < 0) {
-        perror("Error al utilizar rmdir.\n");
-    }
-
-    return ret_stat;*/
 }
 
 int my_fsync(const char *path, int datasync, struct fuse_file_info *fi) {
@@ -822,10 +703,9 @@ int my_fsync(const char *path, int datasync, struct fuse_file_info *fi) {
     printf("Sincronizando los datos del archivo %s.\n", path);
 
     char *dup_path = strdup(path);
-    char name[FILENAME_MAX]; //TODO revisar
     int inode_id = get_inode_id_from_path(dup_path);
     if(inode_id<0) {
-        perror("Error al buscar un archivo en el sistema de archivos.\n");
+        perror("Error al buscar un archivo en el sistema de archivos.");
         return -ENOENT;
     }
 
@@ -834,136 +714,69 @@ int my_fsync(const char *path, int datasync, struct fuse_file_info *fi) {
     if(datasync) {
         ret_stat = fdatasync(fi->fh);
         if(ret_stat < 0) {
-            perror("Error al utilizar la función fdatasync.\n");
+            perror("Error al utilizar la función fdatasync.");
             return ret_stat;
         }
     }
     else {
         ret_stat = fsync(fi->fh);
         if(ret_stat < 0) {
-            perror("Error al utilizar la función fsync.\n");
+            perror("Error al utilizar la función fsync.");
             return ret_stat;
         }
     }
 
+    free(dup_path);
+
     printf("Terminando de sincronizar los datos de un archivo.\n");
     return EXIT_SUCCESS;
-    /*
-     * int ret_stat = EXIT_SUCCESS;
-     * //log_msg("\nbb_fsync(path=\"%s\", datasync=%d, fi=0x%08x)\n",
-	  //  path, datasync, fi);
-    //log_fi(fi);
-
-    if(datasync) { // Me parece que es lo mismo
-                // https://www.informit.com/articles/article.aspx?p=23618&seqNum=5#:~:text=c)%20Write%20and%20Sync%20a%20Journal%20Entry&text=Another%20system%20call%2C%20fdatasync%20does,file's%20data%20will%20be%20written.
-        ret_stat = fdatasync(fi->fh);
-        if (ret_stat < 0) {
-            perror("Error al utilizar fdatasync.\n");
-        }
-    }
-    else {
-        ret_stat = fsync(fi->fh);
-        if (ret_stat < 0) {
-            perror("Error al utilizar fsync.\n");
-        }
-    }
-
-    return ret_stat;*/
 }
 
 int my_access(const char *path, int mask) { //TODO arreglar
 
     printf("Utilizando la función my_access con el archivo %s, con la máscara: %d.\n", path, mask);
 
+
     char *dup_path = strdup(path);
-    char name[FILENAME_MAX]; //TODO revisar
     int inode_id = get_inode_id_from_path(dup_path);
 
     if(inode_id < 0) {
-        return -EACCES;
+
+        printf("Terminando de verificar el acceso con my_access.\n");
+        return -EXIT_FAILURE;
     }
     if(mask == F_OK) {
+        printf("Terminando de verificar el acceso con my_access.\n");
         return EXIT_SUCCESS;
     }
     my_inode *inode = get_inode(inode_id);
 
     if(inode->mode & (mask*0100)) { // TODO nos deja leer aunque no hayna permisos
+
         printf("Terminando la función my_access.\n"); //TODO cambiar
         return EXIT_SUCCESS;
     } // and o or
-
-    printf("Terminando la función my_access.\n"); //TODO cambiar
-    return -EACCES;
-
-    /*int ret_stat = EXIT_SUCCESS;
-    char fpath[PATH_MAX];
-
-    //log_msg("\nmy_access(path=\"%s\", mask=0%o)\n",
-    //        path, mask);
-    get_fullpath(fpath, path);
-    ret_stat = access(fpath, mask);
-
-    if (ret_stat < 0) {
-        perror("Error al utilizar access.\n");
-        ret_stat = -errno;
-    }
-
-    return ret_stat;*/
+    free(dup_path); // TODO free antes de todos returns??
+    printf("Terminando de verificar el acceso con my_access.\n");
+    return -EXIT_FAILURE;
 }
 
-//todo F, borrarla
-int fs_mknod(const char *path, mode_t mode, dev_t dev) {
 
-    printf("Creando un nodo para el path %s con la funcion fs_mknod.\n", path);
-
-    //get current and parent inodes
-    mode |= S_IFREG;
-    if (!S_ISREG(mode) || strcmp(path, "/") == 0) return -EINVAL;
-    char *_path = strdup(path);
-    char name[FILENAME_MAX];
-    int inode_idx = get_inode_id_from_path(_path);
-    int parent_inode_idx = get_inode_id_and_leaf_from_path(_path, name);
-    if (inode_idx >= 0) return -EEXIST;
-    if (parent_inode_idx < 0) return parent_inode_idx;
-    //read parent info
-    my_inode *parent_inode = get_inode(parent_inode_idx);
-    if (!(S_ISDIR(parent_inode->mode))) return -ENOTDIR;
-
-    my_dirent *entries;//[DIR_ENTS_PER_BLK];
-    //memset(entries, 0, DIR_ENTS_PER_BLK * sizeof(my_dirent));
-    //if (disk->ops->read(disk, parent_inode->direct[0], 1, entries) < 0)
-    //    exit(1);
-
-    entries = read_data(parent_inode->direct[0]);
-
-    //assign inode and directory and update
-    int res = set_attributes_and_update(entries, name, mode, false);
-    if (res < 0) return res;
-
-    //write entries buffer into disk
-    //if (disk->ops->write(disk, parent_inode->direct[0], 1, entries) < 0)
-    //    exit(1);
-
-    write_data(entries, parent_inode->direct[0]);
-
-    printf("Terminando de crear un nodo.\n");
-    return EXIT_SUCCESS;
-}
-
-//todo cambiar nombre
-int fs_chmod(const char *path, mode_t mode) {
+int fs_chmod(const char *path, mode_t mode) { //TODO quitar, cambiar nombre ??
 
     printf("Haciendo un chmod.\n");
     //printf("resultado mkdir: %d\n", my_mkdir("/dir1", 0777));
-    char* _path = strdup(path);
-    int inode_idx = get_inode_id_from_path(_path);
+    char* dup_path = strdup(path);
+    int inode_idx = get_inode_id_from_path(dup_path);
     if (inode_idx < 0) return inode_idx;
     my_inode *inode = get_inode(inode_idx);
     //protect system from other modes
     mode |= S_ISDIR(inode->mode) ? S_IFDIR : S_IFREG;
     //change through reference
     inode->mode = mode;
-    add_inode(inode_idx, inode);
+    update_inode(inode_idx, inode);
+
+    free(inode);
 
     printf("Terminando con el chmod\n");
     return EXIT_SUCCESS;
@@ -1060,22 +873,23 @@ struct fuse_operations my_oper = {
         .chmod = fs_chmod
 };
 
-void usage() {
-    printf("Uso: ./mount.qrfs directorio_qr/ punto_montaje/");
+void usage(char *arg0) {
+
+    printf("Uso: %s directorio_qr/ punto_montaje/", arg0); //TODO con el ./ ??
 }
 
 int main(int argc, char *argv[]) {
 
-    //Sacar esto
-    //root_inode_id = 1;
-
-    int fuse_stat;
+    int fuse_stat; // TODO dejar??
     my_state *my_currentstate;
     printf("Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
 
     if(argc < 4) {
-        perror("Usage: mount.qrfs [opciones] qrfolder/ qrinitial mountpoint/ password\n");
+
+        usage(argv[0]);
+        perror("Error en los argumentos.");
         return -EINVAL;
+
     }
 
     int mount_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
@@ -1083,64 +897,19 @@ int main(int argc, char *argv[]) {
     char *mount_password = argv[5];
     init_storage(mount_qrfolder_path, mount_password, mount_file_size);
 
-    /*uint32_t key = jenkins_one_at_a_time_hash(mount_password, strlen(mount_password));
-    my_super *super_block = read_data(SUPER_BLOCK_NUM);
-
-    int inode_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE);
-    int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
-    void *inode_map = read_data(inode_map_position);
-    void *block_map = read_data(block_map_position);
-
-    block_decipher((void **)&super_block, key);
-    block_decipher((void **)&inode_map, key);
-    block_decipher((void **)&block_map, key);
-
-    write_data(super_block, SUPER_BLOCK_NUM);
-    write_data(inode_map, inode_map_position);
-    write_data(block_map, block_map_position);
-
-    free(super_block);
-    free(inode_map);
-    free(block_map);*/
-
-    /*int file = open("nombrealgo", O_WRONLY|O_CREAT|O_TRUNC, 0777);
-    char *data=malloc(1024*10);
-    void *ptr = (void *)data;
-    for(int i=1; i<10; ++i) {
-
-        memcpy(ptr, read_data(i), 1024);
-        ptr += 1024;
-    }
-    write(file, data, 1024*10);
-    close(file);*/
-
-    /*char *data = malloc(1024*1024);
-    memset(data, 0, 1024*1024);
-    open("prueba.img", data, 1024*1024);
-    void *ptr = (void *)data;
-
-    for(int i=1; i< 200; ++i) {
-        write_data(ptr, i);
-        ptr += 1024;
-    }*/
-
     if ((getuid() == 0) || (geteuid() == 0)) {
         fprintf(stderr, "Running mount.qrfs as root opens unnacceptable security holes.\n");
         return -EACCES;
     }
 
-    // TODO Parse QRs INIT QR
-
     my_currentstate = malloc(sizeof(my_state));
     if(my_currentstate == NULL) {
-        perror("Error al utilizar malloc.\n");
+        perror("Error al utilizar malloc.");
         return -ENOMEM;
     }
     my_currentstate->rootdir = realpath(argv[argc - ROOT_ARG_POSITION], NULL);
-    //my_data->logfile = log_open();
 
-    argv[argc - INIT_QR_ARG_POSITION] = argv[argc - MOUNT_ARG_POSITION];
+    argv[argc - INIT_QR_ARG_POSITION] = argv[argc - MOUNT_ARG_POSITION]; //TODO revisar
     argv[argc - ROOT_ARG_POSITION] = argv[argc - MOUNT_ARG_POSITION] = NULL;
     argv[5] = NULL;
     argc -= 3;
@@ -1149,26 +918,6 @@ int main(int argc, char *argv[]) {
     fuse_stat = fuse_main(argc, argv, &my_oper, NULL);
 
     printf("Saliendo de fuse_main");
-
-    /*super_block = read_data(SUPER_BLOCK_NUM);
-
-    inode_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE);
-    block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
-    inode_map = read_data(inode_map_position);
-    block_map = read_data(block_map_position);
-
-    block_decipher((void **)&super_block, key);
-    block_decipher((void **)&inode_map, key);
-    block_decipher((void **)&block_map, key);
-
-    write_data(super_block, SUPER_BLOCK_NUM);
-    write_data(inode_map, inode_map_position);
-    write_data(block_map, block_map_position);
-
-    free(super_block);
-    free(inode_map);
-    free(block_map);*/
 
     return EXIT_SUCCESS;
 }
