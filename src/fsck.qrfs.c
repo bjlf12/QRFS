@@ -1,5 +1,8 @@
-/*
- *
+/**
+ * Autores:
+ *   Brandon Ledezma Fernández
+ *   Walter Morales Vásquez
+ * Módulo encargado de realizar el chequeo de consistencia
  */
 
 #include <string.h>
@@ -9,9 +12,22 @@
 #include "fsck.qrfs.h"
 #include "my_storage.h"
 
-
-int mkfs_file_size;
-
+/**
+ * blocks_consistency_check - encargado de comenzar el chequeo de consistencia
+ *   para los bloques en el sistema de archivos
+ *
+ * Rellena un arreglo indicando si encuentra a los bloques en las posiciones del
+ *   arreglo como utilizados
+ *
+ * Errors:
+ *   -EIO error al leer de disco
+ *
+ * @param blocks_in_use arreglo en el que la cada posición indica cúantas veces
+ *   se encuentra utilizado un bloque
+ * @param inode inodo por el que se recorrerá el sistema de archivos
+ * @param is_dir bandera que indica si el inode se trata o no de un directorio
+ * @return 0 en caso de que termine con éxito, un código de error en otro caso
+ */
 int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
 
     int *temp = *blocks_in_use;
@@ -20,7 +36,7 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
     for(index=0; index<NUM_DIRECT_ENT; ++index) {
 
         if(!inode->direct[index]) {
-            break; // Creo que puede haber un 0 de por medio
+            break;
         }
         if(is_dir) {
             temp_dirent = read_data(inode->direct[index]);
@@ -40,7 +56,7 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
         uint32_t *indir1 = read_data(inode->indir_1);
         if(indir1 == NULL) {
             perror("Error al leer datos con la función read_data.");
-            return -EXIT_FAILURE;
+            return -EIO;
         }
 
         int index2;
@@ -53,7 +69,7 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
                 temp_dirent = read_data(indir1[index2]);
                 if(temp_dirent == NULL) {
                     perror("Error al leer datos con la función read_data.");
-                    return -EXIT_FAILURE;
+                    return -EIO;
                 }
                 blocks_consistency_check_aux(&temp, temp_dirent); //FREE
                 free(temp_dirent);
@@ -67,7 +83,7 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
             uint32_t *indir2 = read_data(inode->indir_2);
             if(indir2 == NULL) {
                 perror("Error al leer datos con la función read_data.");
-                return -EXIT_FAILURE;
+                return -EIO;
             }
 
             for(int i=0; i< PTRS_PER_BLK; ++i) {
@@ -85,8 +101,18 @@ int blocks_consistency_check(int **blocks_in_use, my_inode *inode, int is_dir) {
             free(indir2);
         }
     }
+    return EXIT_SUCCESS;
 }
 
+/**
+ * blocks_consistency_check_aux - auxiliar que ayuda a recorrer
+ *   el sistema de archivos
+ *
+ * @param blocks_in_use arreglo en el que la cada posición indica cúantas veces
+ *   se encuentra utilizado un bloque
+ * @param dirent entrada de directorio que será recorrida en busqueda de inodos
+ * @return 0 en caso de que termine correctamente, 0 en otro caso
+ */
 int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent) {
 
     int *temp = *blocks_in_use;
@@ -97,11 +123,30 @@ int blocks_consistency_check_aux(int **blocks_in_use, my_dirent *dirent) {
             break;
         }
         temp_inode = get_inode(dirent[i].inode);
-        blocks_consistency_check(&temp, temp_inode, dirent[i].isDir);
+        if(blocks_consistency_check(&temp, temp_inode, dirent[i].isDir) < 0) {
+            return EXIT_FAILURE;
+        }
         free(temp_inode);
     }
+    return EXIT_SUCCESS;
 }
 
+/**
+ * blocks_consistency_check - encargado de comenzar el chequeo de consistencia
+ *   para los inodos en el sistema de archivos
+ *
+ * Rellena un arreglo indicando si encuentra un inodo, esto dependiendo del
+ *   número indice del inodo
+ *
+ * Errors:
+ *   -EIO error al leer de disco
+ *
+ * @param inodes_in_use arreglo en el que la cada posición indica cúantas veces
+ *   se encuentra un inodo
+ * @param inode inodo por el que se recorrerá el sistema de archivos
+ * @param is_dir bandera que indica si el inode se trata o no de un directorio
+ * @return 0 en caso de que termine con éxito, un código de error en otro caso
+ */
 int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
 
     int *temp = *inodes_in_use;
@@ -127,9 +172,8 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
 
         uint32_t *indir1 = read_data(inode->indir_1);
         if(indir1 == NULL) {
-
             perror("Error al leer datos con la función read_data.");
-            return -EXIT_FAILURE;
+            return -EIO;
         }
 
         int index2;
@@ -148,9 +192,8 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
 
             uint32_t *indir2 = read_data(inode->indir_2);
             if(indir2 == NULL) {
-
                 perror("Error al leer datos con la función read_data.");
-                return -EXIT_FAILURE;
+                return -EIO;
             }
 
             for(int i=0; i< PTRS_PER_BLK; ++i) {
@@ -167,6 +210,15 @@ int inodes_consistency_check(int **inodes_in_use, my_inode *inode, int is_dir) {
     }
 }
 
+/**
+ * inodes_consistency_check_aux - auxiliar que ayuda a recorrer
+ *   el sistema de archivos en busqueda de inodos
+ *
+ * @param inodes_in_use arreglo en el que la cada posición indica cúantas veces
+ *   se encuentra un inodo
+ * @param dirent entrada de directorio que será recorrida en busqueda de inodos
+ * @return 0 en caso de que termine correctamente, 1 en otro caso
+ */
 int inodes_consistency_check_aux(int **inodes_in_use, my_dirent *dirent) {
 
     int *temp = *inodes_in_use;
@@ -178,16 +230,31 @@ int inodes_consistency_check_aux(int **inodes_in_use, my_dirent *dirent) {
         }
         if(dirent[i].isDir) {
             temp_inode = get_inode(dirent[i].inode);
-            inodes_consistency_check(&temp, temp_inode, dirent[i].isDir);
+            if(inodes_consistency_check(&temp, temp_inode, dirent[i].isDir)<0) {
+                return EXIT_FAILURE;
+            }
             free(temp_inode);
         }
         temp[dirent[i].inode] += 1;
     }
+    return EXIT_SUCCESS;
 }
 
+/**
+ * check_file_system - realiza un chequeo completo al sistema de
+ *   archivos
+ *
+ * Errors:
+ *   -ENOTRECOVERABLE un estado no recuperable
+ *
+ * @param user_password contraseña con la que se decifrarán los
+ *   datos para leer la información de organización del sistema de
+ *   archivos
+ * @return 0 en caso de éxito, 1 en otro caso
+ */
 int check_file_system(char *user_password) {
 
-    char *data = malloc(mkfs_file_size); // TODO
+    char *data = malloc(mkfs_file_size);
     memset(data, 0, mkfs_file_size);
     void *ptr = (void *)data;
 
@@ -208,64 +275,22 @@ int check_file_system(char *user_password) {
         return -EXIT_FAILURE;
     }
 
-    printf("magic: %d, inode_map_sz: %d, block_map_sz: %d, inode_region_sz: %d, num_blocks: %d, inode: %d\n",
-           super->magic, super->inode_map_sz, super->block_map_sz, super->inode_region_sz, super->num_blocks, super->root_inode);
+    //printf("magic: %d, inode_map_sz: %d, block_map_sz: %d, inode_region_sz: %d, num_blocks: %d, inode: %d\n",
+    //       super->magic, super->inode_map_sz, super->block_map_sz, super->inode_region_sz, super->num_blocks, super->root_inode);
 
     void *ptr2 = (void *)data + 1024;
 
     fd_set *inode_b = ptr2;
     block_decipher((void **)&inode_b, key);
 
-    printf("Is set inode (0): %d\n", FD_ISSET(0, inode_b));
-    printf("Is set inode (1): %d\n", FD_ISSET(1, inode_b));
-    printf("Is set inode (2): %d\n", FD_ISSET(2, inode_b));
-    printf("Is set inode (3): %d\n", FD_ISSET(3, inode_b));
-
     ptr2 += 1024;
 
     fd_set *block_b = ptr2;
     block_decipher((void **)&block_b, key);
 
-    printf("Is set block 0: %d\n", FD_ISSET(0, block_b));
-    printf("Is set block 1: %d\n", FD_ISSET(1, block_b));
-    printf("Is set block 2: %d\n", FD_ISSET(2, block_b));
-    printf("Is set block 3: %d\n", FD_ISSET(3, block_b));
-    printf("Is set block 4: %d\n", FD_ISSET(4, block_b));
-    printf("Is set block 5: %d\n", FD_ISSET(5, block_b));
-    printf("Is set block 6: %d\n", FD_ISSET(6, block_b));
-    printf("Is set block 7: %d\n", FD_ISSET(7, block_b));
-    printf("Is set block 8: %d\n", FD_ISSET(8, block_b));
-    printf("Is set block 9: %d\n", FD_ISSET(9, block_b));
-    printf("Is set block 9: %d\n", FD_ISSET(10, block_b));
-    printf("Is set block 9: %d\n", FD_ISSET(11, block_b));
-    printf("Is set block 9: %d\n", FD_ISSET(12, block_b));
-    printf("Is set block 9: %d\n", FD_ISSET(13, block_b));
-
     ptr2 += 1024;
 
     my_inode *inodes = ptr2;
-
-    printf("1: %d\n", inodes[0].uid); //TODO quitar printfs
-    printf("2: %d\n", inodes[1].mode);
-    printf("3: %d\n", inodes[2].uid);
-    printf("4: %d\n", inodes[3].uid);
-    printf("5: %d\n", inodes[4].mode);
-    printf("6: %d\n", inodes[5].uid);
-    printf("7: %d\n", inodes[6].uid);
-    printf("8: %d\n", inodes[7].mode);
-    printf("9: %d\n", inodes[8].uid);
-    printf("10: %d\n", inodes[9].uid);
-    printf("11: %d\n", inodes[10].uid);
-    printf("12: %d\n", inodes[11].uid);
-    printf("13: %d\n", inodes[12].uid);
-
-    for(int i=0; i<NUMBER_OF_DATABLOCKS; ++i) {
-        if(FD_ISSET(i, inode_b)) {
-            printf("bitmap: %d\n", i);
-        }
-    }
-
-    ptr2 += 1024*5;
 
     int *blocks_in_use = calloc(sizeof(int), NUMBER_OF_DATABLOCKS);
     int *free_blocks = calloc(sizeof(int), NUMBER_OF_DATABLOCKS);
@@ -273,10 +298,10 @@ int check_file_system(char *user_password) {
     int first_usable_block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super->inode_map_sz + super->block_map_sz + super->inode_region_sz;
 
     my_inode *root_inode = get_inode(super->root_inode);
-    printf("Block root: %d\n", root_inode->direct[0]);
 
     if(blocks_consistency_check(&blocks_in_use, root_inode, true) < 0) {
         perror("Error al realizar el chequeo de consistencia de bloques.");
+        return EXIT_FAILURE;
     }
 
     for(int i=0; i<first_usable_block; ++i) blocks_in_use[i] = 1;
@@ -315,14 +340,13 @@ int check_file_system(char *user_password) {
     int first_inodes = super->root_inode+1;
 
     if(inodes_consistency_check(&inodes_in_use, root_inode, true) <0) {
-
         perror("Error al realizar el chequeo de consistencia de inodos.");
+        return EXIT_FAILURE;
     }
 
     for(int i=0; i<first_inodes; ++i) inodes_in_use[i] = 1;
 
     for(int i=0; i<NUMBER_OF_INODES; ++i) {
-
         if(!FD_ISSET(i, inode_b)) {
             free_inodes[i] += 1;
         }
@@ -350,17 +374,29 @@ int check_file_system(char *user_password) {
 
     printf("Se ha terminado el chequeo de consistencia, el sistema de archivos se encuentra correctamente.\n");
 
-    free(data); //TODO frees
+    free(data);
 
     return EXIT_SUCCESS;
 }
 
-void usage(char *arg0) {
-
-    printf("Uso: %s directorio_qr/ constraseña\n", arg0);
-
+/**
+ * usage - muestra la información sobre el uso del programa
+ */
+void usage() {
+    printf("Uso: ./fsck.qrfs directorio_qr/ constraseña\n");
 }
 
+/**
+ * main - función principal del programa
+ *
+ * Errors:
+ *   -EINVAL argumentos inválidos
+ *
+ * @param argc contador de argumentos
+ * @param argv arreglo de argumentos
+ * @return 0 en caso de éxito, 1 en otro
+ *   caso
+ */
 int main(int argc, char* argv[]) {
 
     if(argc != 3) {
@@ -372,7 +408,6 @@ int main(int argc, char* argv[]) {
     char *mkfs_qrfolder_path = argv[1];
     char *mkfs_password = argv[2];
     mkfs_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
-
 
     init_storage(mkfs_qrfolder_path, mkfs_password, mkfs_file_size);
     if(check_file_system(mkfs_password) < 0) {

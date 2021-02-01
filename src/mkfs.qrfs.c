@@ -1,8 +1,9 @@
-/*
- *
+/**
+ * Autores:
+ *   Brandon Ledezma Fernández
+ *   Walter Morales Vásquez
+ * Módulo encargado de crear el sistema de archivos y cifrar los datos sobre la organización del mismo.
  */
-
-// Crear el FS a partir de un directorio y una contraseña.
 
 #include <stddef.h>
 #include <stdio.h>
@@ -18,10 +19,19 @@
 #include "my_inode.h"
 #include "my_storage.h"
 
-int mkfs_file_size;
-char *mkfs_qrfolder_path;
-char *mkfs_password;
+int mkfs_file_size; // Tamaño en bytes del sistema de archivos
+char *mkfs_qrfolder_path; // Directorio que contiene a las imagenes con los códigos QR
+char *mkfs_password; // Contraseña brindada por el usuario para descifrar los datos
 
+/**
+ * init_file_system - inicializa el sistema de archivos
+ *
+ * Errors:
+ *   -ENOMEM no existe suficiente memoria para hacer un
+ *     malloc
+ *
+ * @return 0 en caso de éxito, código de error en otro caso
+ */
 int init_file_system() {
 
     printf("Inicializando el sistema de archivos.\n");
@@ -42,20 +52,17 @@ int init_file_system() {
             .block_map_sz = (int)ceil((double)NUMBER_OF_DATABLOCKS / MY_BLOCK_SIZE),
             .inode_region_sz = (int)ceil((double)NUMBER_OF_INODES * sizeof(my_inode) / MY_BLOCK_SIZE),
             .root_inode = 0,
-            .num_blocks = NUMBER_OF_DATABLOCKS}; //TODO cambiar todos los number of datablocks por esto??
-
-    printf("inode_map_sz: %d, block_map_sz: %d, inode_region_sz: %d, num_blocks: %d\n",
-           my_super->inode_map_sz, my_super->block_map_sz, my_super->inode_region_sz, my_super->num_blocks);
+            .num_blocks = NUMBER_OF_DATABLOCKS};
 
     int num_block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + my_super->inode_map_sz +
             my_super->block_map_sz + my_super->inode_region_sz;
 
-    int root_direct[NUM_DIRECT_ENT]; //int *root_direct = (int *)malloc(sizeof(int)* NUM_DIRECT_ENT);
+    int root_direct[NUM_DIRECT_ENT];
     root_direct[0] = num_block;
     for(int i=1; i< NUM_DIRECT_ENT; ++i) root_direct[i] = 0;
 
-    int root_mode = 0040755; // 0040777 // mode_t S_IRWXU | S_IRWXG | S_IRWXO // Creo que para el root es 0040755
-    int root_inode_id = 0; // TODO revisar si no hay problema si es 0
+    int root_mode = 0040755;
+    int root_inode_id = 0;
     int root_indir_1 = 0;
     int root_indir_2 = 0;
 
@@ -100,25 +107,22 @@ int init_file_system() {
     FD_SET(1, inode_bitmap_ptr);*/
     // FILE.A dksmlamds
 
-    printf("actual_block_num3: %d\n", actual_block_num);
-
-    printf("%d\n", inodes[0].uid);
-    printf("%d\n", inodes[1].uid);
-    printf("%d\n", inodes[1].mode);
-
     uint32_t key = jenkins_one_at_a_time_hash(mkfs_password, strlen(mkfs_password));
 
     block_cipher((void **) &my_super, key);
     block_cipher((void **) &block_bitmap_ptr, key);
     block_cipher((void **) &inode_bitmap_ptr, key);
 
-    printf("cifrado: inode_map_sz: %d, block_map_sz: %d, inode_region_sz: %d, num_blocks: %d\n",
-           my_super->inode_map_sz, my_super->block_map_sz, my_super->inode_region_sz, my_super->num_blocks);
+    //printf("cifrado: inode_map_sz: %d, block_map_sz: %d, inode_region_sz: %d, num_blocks: %d\n",
+    //       my_super->inode_map_sz, my_super->block_map_sz, my_super->inode_region_sz, my_super->num_blocks);
 
     //block_decipher((void **)&my_super, key);
 
-    if(write_total_data(file_data) != 0) {
-        perror("Error al escribir los datos del sistema de archivos.");//return
+    if(write_total_data(file_data) < 0) {
+        perror("Error al escribir los datos del sistema de archivos.");
+        free(file_data);
+
+        return EXIT_FAILURE;
     }
 
     free(file_data);
@@ -127,11 +131,24 @@ int init_file_system() {
     return EXIT_SUCCESS;
 }
 
-void usage(char *arg0) {
-
-    printf("Uso: %s directorio_qr/ constraseña\n", arg0);
+/**
+ * usage - muestra la información sobre el uso del programa
+ */
+void usage() {
+    printf("Uso: ./mkfs.qrfs directorio_qr/ constraseña\n");
 }
 
+/**
+ * main - funcioón principal del programa
+ *
+ * Errors:
+ *   -EINVAL argumentos inválidos
+ *
+ * @param argc contador de argumentos
+ * @param argv arreglo de argumentos
+ * @return 0 en caso de éxito, 1 en otro
+ *   caso
+ */
 int main(int argc, char* argv[]) {
 
     if(argc != 3) {

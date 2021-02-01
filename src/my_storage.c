@@ -1,6 +1,9 @@
-//
-// Created by estudiante on 19/1/21.
-//
+/**
+ * Autores:
+ *   Brandon Ledezma Fernández
+ *   Walter Morales Vásquez
+ * Módulo encargado de las funciones de leer de disco y de escribir de disco.
+ */
 
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +26,16 @@
 #define QR_MARGIN 5
 #define QR_VERSION 23
 
+/**
+ * init_storage - inicializa los valores del módulo storage
+ *
+ * @param new_qrfolder_path el directorio donde se encuentran
+ *   las imágenes con los códigos QR
+ * @param new_password contraseña brindada por el usuario para
+ *   decodificar la información del superbloque y de los bitmaps
+ * @param new_file_size tamaño de los binarios del sistema de
+ *   archivos en total.
+ */
 void init_storage(char *new_qrfolder_path, char *new_password, int new_file_size) {
 
     printf("Iniciando los datos de las funciones de almacenamiento del sistema.\n");
@@ -32,6 +45,22 @@ void init_storage(char *new_qrfolder_path, char *new_password, int new_file_size
     printf("Terminando de inicializar los datos del almacenamiento del programa.\n");
 }
 
+/**
+ * write_total_data - escribe la información del
+ *   sistema de archivos completa en imágenes con
+ *   códigos QR
+ *
+ * Errors:
+ *  -ENOMEM no hay suficiente memoria para realizar
+ *    algún malloc
+ *  -EIO errores de lectura o escritura en el
+ *    disco
+ *
+ * @param total_file_data información total del
+ *   sistema de archivos
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int write_total_data(char *total_file_data) {
 
     printf("Escribiendo todos los datos del sistema de archivos.\n");
@@ -48,6 +77,8 @@ int write_total_data(char *total_file_data) {
     char temp[MY_BLOCK_SIZE];
 
     char file_name[MY_FILENAME_SIZE];
+
+    // Se escribe información de bloque en bloque
     while(size_remaining) {
 
         memcpy(temp, file_ptr, MY_BLOCK_SIZE);
@@ -79,6 +110,22 @@ int write_total_data(char *total_file_data) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * write_data - escribe un bloque del sistema de
+ *   archivos en disco en forma de QR
+ *
+ * Errors:
+ *   -EXIT_FAILURE si la información codificada en
+ *     QR resulta ser nula
+ *   -EIO errores de lectura o escritura en disco
+ *
+ * @param block_data información del bloque que
+ *   será almacenada
+ * @param position número de bloque en el sistema
+ *   de archivos total
+ * @return 0 si se completa satisfactoriamente, o
+ *   el valor del error
+ */
 int write_data(void *block_data, int position) {
 
     printf("Comenzando a escribir información en el bloque: %d.\n", position);
@@ -113,6 +160,15 @@ int write_data(void *block_data, int position) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * read_data - lee un bloque completo de disco
+ *   y decodifica su información
+ *
+ * @param block_num número de bloque a ser
+ *   leído
+ * @return 0 si se completa satisfactoriamente, o
+ *   el valor del error
+ */
 void *read_data(int block_num) {
 
     printf("Leyendo la información del bloque: %d.\n", block_num);
@@ -122,13 +178,10 @@ void *read_data(int block_num) {
         return NULL;
     }
 
-    /* create a reader */
+    // Se crean las estructuras necesarias para obtener información a partir de un QR
     zbar_image_scanner_t *scanner = zbar_image_scanner_create();
-
-    /* configure the reader */
     zbar_image_scanner_set_config(scanner, ZBAR_QRCODE, ZBAR_CFG_BINARY, 1);
 
-    /* obtain image data */
     int width = 0, height = 0;
     void *raw = NULL;
 
@@ -137,31 +190,26 @@ void *read_data(int block_num) {
 
     get_image_data(abs_file_name, &width, &height, &raw);
 
-    /* wrap image data */
+    // Se especifica la información de la imagen
     zbar_image_t *image = zbar_image_create();
     zbar_image_set_format(image, zbar_fourcc('Y','8','0','0'));
     zbar_image_set_size(image, width, height);
     zbar_image_set_data(image, raw, width * height, zbar_image_free_data);
 
-    /* scan the image for barcodes */
+    // Se escanea la imagen y se extraen los resultados
     int n = zbar_scan_image(scanner, image);
-
-    /* extract results */
     const zbar_symbol_t *symbol = zbar_image_first_symbol(image);
-    //for(; symbol; symbol = zbar_symbol_next(symbol)) {
-    /* do something useful with results */
     zbar_symbol_type_t typ = zbar_symbol_get_type(symbol);
     const char *data = zbar_symbol_get_data(symbol);
 
-    //TODO cambiar los enteros
-    char *to_return_data = malloc(1024);
+    char *to_return_data = malloc(MY_BLOCK_SIZE);
     if(to_return_data == NULL) {
-        perror("Error al asiganar memoria en read_data\n");
+        perror("Error al asignar memoria en read_data");
         return NULL; 
     }
     memcpy(to_return_data, data, 1024);
 
-    /* clean up */
+    // Se libera la información que ya no se utilizará
     zbar_image_destroy(image);
     zbar_image_scanner_destroy(scanner);
 
@@ -169,6 +217,21 @@ void *read_data(int block_num) {
     return (void *)to_return_data;
 }
 
+/**
+ * read_file_data - lee información de un
+ *   bloque dadas ciertas especificaciones
+ *   como la posición y el largo a ser
+ *   leído
+ *
+ * @param block_num número de bloque a ser
+ *   leído
+ * @param buf buffer donde se almacenará
+ *   la información a ser recuperada
+ * @param len largo de la información que
+ *   se leerá
+ * @param offset posición de inicio desde
+ *   donde se leerá la información
+ */
 void read_file_data(int block_num, char *buf, size_t len, size_t offset) {
 
     printf("Leyendo la información de un archivo en el bloque: %d.\n", block_num);
@@ -179,7 +242,6 @@ void read_file_data(int block_num, char *buf, size_t len, size_t offset) {
     }
 
     my_dirent *entries;
-
     entries = read_data(block_num);
     if(entries == NULL) {
         perror("Error al leer las entradas de directorio en read_data.");
@@ -192,6 +254,21 @@ void read_file_data(int block_num, char *buf, size_t len, size_t offset) {
     printf("Terminando de leer la información de un archivo.");
 }
 
+/**
+ * write_file_data - se escribe en un bloque
+ *   siguiendo ciertas especificaciones como
+ *   la cantidad de información a ser escrita
+ *   y desde dónde se comenzará a escribir.
+ *
+ * @param block_num número de bloque en el que
+ *   se escribirá la información
+ * @param buf buffer desde el que se obtendrá
+ *   la información que será escrita
+ * @param len largo total de la información a
+ *   ser escrita
+ * @param offset posición de inicio desde donde
+ *   se comenzará a escribir
+ */
 void write_file_data(int block_num, const char *buf, size_t len, size_t offset) {
 
     printf("Comenzando a escribir la información de un archivo en el bloque: %d.\n", block_num);
@@ -209,8 +286,8 @@ void write_file_data(int block_num, const char *buf, size_t len, size_t offset) 
         return;
     }
 
+    // Se utiliza memcpy para cumplir con las especificaciones recibidas por parámetro
     memcpy(entries + offset, buf, len);
-
     if(write_data(entries, block_num) < 0) {
         perror("Error al escribit las entradas de directorio en write_data.");
         return;
@@ -219,10 +296,26 @@ void write_file_data(int block_num, const char *buf, size_t len, size_t offset) 
     printf("Terminando de escribir la información de un archivo.");
 }
 
+/**
+ * set_inode_bitmap - marca como utilizado un
+ *   inode del bitmap encargado de llevar el
+ *   registro de estos
+ *
+ * Errors:
+ *   -EIO error al leer o escribir la información
+ *     del disco
+ *   -ENOMEM no existe suficiente memoria para
+ *     realizar un malloc.
+ *
+ * @param inode_num número de inodo a ser marcado
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int set_inode_bitmap(int inode_num) {
 
     printf("Marcando el bit %d del bitmap de inodos.\n", inode_num);
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -232,8 +325,8 @@ int set_inode_bitmap(int inode_num) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int inode_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE);
-
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
         perror("Error al obtener memoria para el bitmap de inodos en malloc.");
@@ -244,6 +337,7 @@ int set_inode_bitmap(int inode_num) {
     fd_set *inode_map = ptr;
     void *temp_inode_map;
 
+    // Se lee información según la cantidad de bloques que especifica el superbloque
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         temp_inode_map = read_data(inode_map_position+i);
         memcpy(ptr, temp_inode_map, MY_BLOCK_SIZE);
@@ -257,6 +351,7 @@ int set_inode_bitmap(int inode_num) {
 
     block_cipher((void **)&inode_map_data, key);
 
+    // Se escribe información según la información dada por el superbloque
     ptr = (void *)inode_map_data;
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         if(write_data(ptr, inode_map_position+i) < 0) {
@@ -267,11 +362,6 @@ int set_inode_bitmap(int inode_num) {
         ptr += MY_BLOCK_SIZE;
     }
 
-    /*if(write_data(inode_map_data, inode_map_position) < 0) { // TODO hacer que si son más de un bloque hacerlo en un for
-        perror("Error al escribir el bitmap de inodos en write_data.");
-        return -EIO;
-    }*/
-
     free(super_block);
     free(inode_map_data);
 
@@ -279,6 +369,24 @@ int set_inode_bitmap(int inode_num) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * set_block_bitmap - marca como utilizado un
+ *   bloque del sistema de archivos en el
+ *   bitmap encargado de llevar el registro
+ *
+ * Errors:
+ *   -EXIT_FAILURE el número de bloque sobrepasa
+ *     el límite actual del sistema de archivos
+ *   -EIO error al escribir o leer información
+ *     del disco
+ *   -ENOMEM no hay suficiente memoria para un
+ *     malloc
+ *
+ * @param block_num número de bloque que será
+ *   marcado como utilizado
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int set_block_bitmap(int block_num) {
 
     printf("Marcando el bit %d del bitmap de bloques.\n", block_num);
@@ -288,6 +396,7 @@ int set_block_bitmap(int block_num) {
         return -EXIT_FAILURE;
     }
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el super bloque en read_data.");
@@ -297,8 +406,8 @@ int set_block_bitmap(int block_num) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de bloques en malloc.");
@@ -308,6 +417,7 @@ int set_block_bitmap(int block_num) {
     void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
 
+    // Se lee información hasta cumplir con la cantidad de bloques especificada en el superbloque
     for(int i=0; i < super_block->block_map_sz; ++i) {
         memcpy(ptr, read_data(block_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
@@ -315,9 +425,9 @@ int set_block_bitmap(int block_num) {
     }
 
     FD_SET(block_num, block_map);
-
     block_cipher((void **)&block_map_data, key);
 
+    // Se escribe información según la cantidad expuesta en el superbloque
     ptr = (void *)block_map_data;
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         if(write_data(ptr, block_map_position+i) < 0) {
@@ -328,11 +438,6 @@ int set_block_bitmap(int block_num) {
         ptr += MY_BLOCK_SIZE;
     }
 
-    /*if(write_data(block_map_data, block_map_position) < 0) {
-        perror("Error al escribir el bitmap de bloques en write_data.");
-        return -EIO;
-    }*/
-
     free(super_block);
     free(block_map_data);
 
@@ -340,30 +445,47 @@ int set_block_bitmap(int block_num) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * is_set_inode_bitmap - pregunta si cierto
+ *   inodo se encuentra marcado como utilizado
+ *   en el registro de estos
+ *
+ * Errors:
+ *   -EIO error al leer o escribir información
+ *     del disco
+ *   -ENOMEM error al solicitar memoria en un
+ *     malloc
+ *
+ * @param inode_num número de inodo del que se
+ *   desea saber si está siendo utilizado
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int is_set_inode_bitmap(int inode_num) {
 
     printf("Comprobando si el bit %d del bitmap de inodos se encuentra activado.\n", inode_num);
+
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
-
         perror("Error al leer el superbloque en read_data.");
         return -EIO;
     }
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int inode_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE);
-
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de inodos en malloc.");
-
         return -ENOMEM;
     }
 
     void *ptr = (void *)inode_map_data;
     fd_set *inode_map = ptr;
 
+    // Se lee información según la cantidad que indica el superbloque que requiere la región bitmap de inodos
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         memcpy(ptr, read_data(inode_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
@@ -379,9 +501,27 @@ int is_set_inode_bitmap(int inode_num) {
     return result;
 }
 
+/**
+ * is_set_block_bitmap - pregunta si cierto
+ *   bloque se encuentra ocupado en el registro
+ *   que lleva estos datos
+ *
+ * Errors:
+ *   -EIO error al hacer una lectura o escritura
+ *     de disco
+ *   -ENOMEM error al solicitar memoria para
+ *     realizar un malloc
+ *
+ * @param block_num número de bloque del que se
+ *   desea saber si está siendo ocupado
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int is_set_block_bitmap(int block_num) {
 
     printf("Comprobando si el bit %d del bitmap de bloques se encuentra activado.\n", block_num);
+
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -390,8 +530,8 @@ int is_set_block_bitmap(int block_num) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de bloques en malloc.");
@@ -400,6 +540,8 @@ int is_set_block_bitmap(int block_num) {
     void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
 
+    // Se lee información hasta cumplir con la cantidad de bloques que indica el superbloque que ocupa el
+    // bitmap de bloques
     for(int i=0; i < super_block->block_map_sz; ++i) {
         memcpy(ptr, read_data(block_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&block_map, key);
@@ -415,9 +557,26 @@ int is_set_block_bitmap(int block_num) {
     return result;
 }
 
+/**
+ * clear_inode_bitmap - marca como liberado un
+ *   inodo en el registro de inodos
+ *
+ * Errors:
+ *   -EIO error al intentar escribir o leer del
+ *     disco
+ *   -ENOMEM error al solicitar memoria para un
+ *     malloc
+ *
+ * @param inode_num número de inodo que será
+ *   marcado como libre
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int clear_inode_bitmap(int inode_num) {
 
     printf("Limpiando el bit %d del bitmap de inodos.\n", inode_num);
+
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -427,8 +586,8 @@ int clear_inode_bitmap(int inode_num) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int inode_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE);
-
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de inodos en malloc.");
@@ -438,6 +597,7 @@ int clear_inode_bitmap(int inode_num) {
     void *ptr = (void *)inode_map_data;
     fd_set *inode_map = ptr;
 
+    // Se lee toda la información que se deba según el superbloque
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         memcpy(ptr, read_data(inode_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
@@ -448,6 +608,7 @@ int clear_inode_bitmap(int inode_num) {
 
     block_cipher((void **)&inode_map_data, key);
 
+    // Se escribe la información según indica el superbloque que ocupa el bitmap de inodos
     ptr = (void *)inode_map_data;
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         if(write_data(ptr, inode_map_position+i) < 0) {
@@ -458,11 +619,6 @@ int clear_inode_bitmap(int inode_num) {
         ptr += MY_BLOCK_SIZE;
     }
 
-    /*if(write_data(inode_map_data, inode_map_position) < 0) { //TODO hacer en un for por super_block->inode_map_sz
-        perror("Error al escribir los datos del bitmap de inodos en write_data.");
-        return -EIO;
-    }*/
-
     free(super_block);
     free(inode_map_data);
 
@@ -470,6 +626,24 @@ int clear_inode_bitmap(int inode_num) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * clear_block_bitmap - marca como liberado un
+ *   bloque en el bitmap encargado de llevar el
+ *   registro de estos
+ *
+ * Errors:
+ *   -EXIT_FAILURE el número de bloque sobrepasa
+ *     el límite actual del sistema de archivos
+ *   -EIO error al leer o escribir información
+ *     del disco
+ *   -ENOMEM no existe suficiente memoria para
+ *     realizar un malloc.
+ *
+ * @param block_num número de bloque que será
+ *   marcado como libre
+ * @return 0 si se completa satisfactoriamente,
+ *   o el valor del error
+ */
 int clear_block_bitmap(int block_num) {
 
     printf("Limpiando el bit %d del bitmap de bloques.\n", block_num);
@@ -479,6 +653,7 @@ int clear_block_bitmap(int block_num) {
         return -EXIT_FAILURE;
     }
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -487,8 +662,8 @@ int clear_block_bitmap(int block_num) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if (block_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de bloques en malloc.");
@@ -498,6 +673,7 @@ int clear_block_bitmap(int block_num) {
     void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
 
+    // Se lee la información que indica el superbloque que se debe leer
     for (int i = 0; i < super_block->block_map_sz; ++i) {
         memcpy(ptr, read_data(block_map_position + i), MY_BLOCK_SIZE);
         block_decipher((void **)&block_map, key);
@@ -507,6 +683,7 @@ int clear_block_bitmap(int block_num) {
     FD_CLR(block_num, block_map);
     block_cipher((void **)&block_map, key);
 
+    // Se escribe la información que indica el superbloque que se debe escribir
     if (write_data(block_map_data, block_map_position) < 0) {
         perror("Error al escribir la información del bitmap de bloques en write_data.");
         return -EIO;
@@ -519,8 +696,25 @@ int clear_block_bitmap(int block_num) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * get_free_block - obtiene el índice de el
+ *   primer bloque que se encuentra libre
+ *   según el bitmap encargado de llevar el
+ *   registro de estos
+ *
+ * Errors:
+ *   -EIO error al leer o escribir información
+ *     del disco
+ *   -ENOMEM no existe suficiente memoria para
+ *     realizar un malloc.
+ *   -ENOSPC
+ *
+ * @return el indice del bloque libre, o el
+ *   valor del error
+ */
 int get_free_block() {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -529,8 +723,8 @@ int get_free_block() {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de bloques en malloc.");
@@ -539,6 +733,7 @@ int get_free_block() {
     void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
 
+    // Se lee la información según indica el superbloque que se debe leer
     for(int i=0; i < super_block->block_map_sz; ++i) {
         memcpy(ptr, read_data(block_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
@@ -567,11 +762,23 @@ int get_free_block() {
 }
 
 /**
- * Count number of free blocks
- * @return number of free blocks
+ * get_num_free_block - itera sobre el
+ *   bitmap que lleva el registro de
+ *   bloques para contar cúantos se
+ *   encuentran libres y devolver este
+ *   número
+ *
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *   -ENOMEM no existe suficiente memoria para
+ *     realizar un malloc.
+ *
+ * @return el número de bloques libres, o
+ *   el valor de un error
  */
 int get_num_free_block() {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -580,8 +787,8 @@ int get_num_free_block() {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int block_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz;
-
     char *block_map_data = malloc(super_block->block_map_sz * MY_BLOCK_SIZE);
     if(block_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de bloques en malloc.");
@@ -590,6 +797,7 @@ int get_num_free_block() {
     void *ptr = (void *)block_map_data;
     fd_set *block_map = ptr;
 
+    // Se lee la información del bitmap de bloques según indica el superbloque que se debe leer
     for(int i=0; i < super_block->block_map_sz; ++i) {
         memcpy(ptr, read_data(block_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
@@ -610,12 +818,21 @@ int get_num_free_block() {
 }
 
 /**
- * Returns a free inode number
+ * get_free_inode - retorna el número de inodos
+ *   libres en el sistema de archivos
  *
- * @return a free inode number or -ENOSPC if none available
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *   -ENOMEM no existe suficiente memoria para
+ *     realizar un malloc.
+ *   -ENOSPC si no se encuentra ningún inodo libre
+ *
+ * @return el número de inodos libres, o un
+ *   código de error
  */
 int get_free_inode() {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if(super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -625,8 +842,8 @@ int get_free_inode() {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición del bloque y se obtiene su información
     int inode_map_position = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE);
-
     char *inode_map_data = malloc(super_block->inode_map_sz * MY_BLOCK_SIZE);
     if(inode_map_data == NULL) {
         perror("Error al asignar memoria para el bitmap de inodos en malloc.");
@@ -636,12 +853,14 @@ int get_free_inode() {
     void *ptr = (void *)inode_map_data;
     fd_set *inode_map = ptr;
 
+    // Se lee la información del bitmap de inodos según indica el superbloque que se debe leer
     for(int i=0; i < super_block->inode_map_sz; ++i) {
         memcpy(ptr, read_data(inode_map_position+i), MY_BLOCK_SIZE);
         block_decipher((void **)&ptr, key);
         ptr += MY_BLOCK_SIZE;
     }
 
+    // Se busca cuál es el primer inodo libre
     for(int i=super_block->root_inode+1; i < NUMBER_OF_INODES; ++i) {
         if(!FD_ISSET(i, inode_map)) {
             FD_SET(i, inode_map);
@@ -662,6 +881,24 @@ int get_free_inode() {
     return -ENOSPC;
 }
 
+/**
+ * read_indir1 - se lee la información de el
+ *   bloque indirecto 1 de un inodo, tomando
+ *   en cuenta ciertas especificaciones
+ *
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *
+ * @param block_num número de bloque del que se
+ *   obtendrá la información
+ * @param buf buffer de donde se almacenará la
+ *   información leída
+ * @param length largo de la información a leer
+ * @param offset posición desde donde se comenzará
+ *   a leer información
+ * @return cantidad de información que quedó como
+ *   no leída, o un código de error
+ */
 size_t read_indir1(int block_num, char *buf, size_t length, size_t offset) {
 
     uint32_t *blk_indices  = read_data(block_num);
@@ -673,11 +910,16 @@ size_t read_indir1(int block_num, char *buf, size_t length, size_t offset) {
     size_t blk_num = offset / MY_BLOCK_SIZE;
     size_t blk_offset = offset % MY_BLOCK_SIZE;
     size_t len_to_read = length;
+
+    // Por cada uno de los punteros del bloque indir1 se lee información hasta que ya no queda
+    // información por leer
     while (blk_num < PTRS_PER_BLK && len_to_read > 0) {
+        // Se calcula la cantidad de información que se leerá en esta iteración
         size_t cur_len_to_read = len_to_read > MY_BLOCK_SIZE ? (size_t) MY_BLOCK_SIZE - blk_offset : len_to_read;
         size_t temp = blk_offset + cur_len_to_read;
 
-        if (!blk_indices[blk_num]) { // TODO revisar si el ser cero nos jode
+        // Si no hay un puntero en esta posición del bloque se termina la función
+        if (!blk_indices[blk_num]) {
             return length - len_to_read;
         }
 
@@ -691,6 +933,26 @@ size_t read_indir1(int block_num, char *buf, size_t length, size_t offset) {
     return length - len_to_read;
 }
 
+/**
+ * read_indir2 - se lee la información de el
+ *   bloque indirecto 2 de un inodo, tomando
+ *   en cuenta ciertas especificaciones
+ *
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *
+ * @param block_num número de bloque indir2 del
+ *   que se obtendrá la información
+ * @param buf buffer de donde se almacenará la
+ *   información leída
+ * @param length largo de la información a leer
+ * @param offset posición desde donde se comenzará
+ *   a leer información
+ * @param indir1_size número de bloque indirecto 1
+ *   del inodo dueño de del indirecto 2 recibido
+ * @return cantidad de información que quedó como
+ *   no leída, o un código de error
+ */
 size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int indir1_size) {
 
     uint32_t *blk_indices = read_data(block_num);
@@ -702,14 +964,20 @@ size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int i
     size_t blk_num = offset / indir1_size;
     size_t blk_offset = offset % indir1_size;
     size_t len_to_read = length;
+
+    // Por cada uno de los punteros del bloque indir2 se lee información hasta que ya no queda
+    // información por leer
     while (blk_num < PTRS_PER_BLK && len_to_read > 0) {
+        // Se calcula la cantidad de información que se leerá en esta iteración
         size_t cur_len_to_read = len_to_read > indir1_size ? (size_t) indir1_size - blk_offset : len_to_read;
         size_t temp = blk_offset + cur_len_to_read;
 
+        // Si no hay un puntero en esta posición del bloque se termina la función
         if (!blk_indices[blk_num]) {
             return length - len_to_read;
         }
 
+        // Se realiza un llamado a la función para leer los indirs1
         temp = read_indir1(blk_indices[blk_num], buf, temp, blk_offset);
 
         buf += temp;
@@ -720,6 +988,22 @@ size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int i
     return length - len_to_read;
 }
 
+/**
+ * write_indir1 - escribe información en el
+ *   bloque indirecto 1 de un inodo
+ *
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *
+ * @param blk número de bloque del que se leerá
+ * @param buf buffer de donde se obtendrá la
+ *   información a leer
+ * @param len largo máximo a escribir
+ * @param offset posición de donde se comenzará a
+ *   escribir
+ * @return cantidad de información que quedó como
+ *   no escrita, o un código de error
+ */
 size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
 
     uint32_t *blk_indices  = read_data(blk);
@@ -731,17 +1015,21 @@ size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
     size_t blk_num = offset / MY_BLOCK_SIZE;
     size_t blk_offset = offset % MY_BLOCK_SIZE;
     size_t len_to_write = len;
+
+    // Por cada uno de los punteros del bloque indir1 se lee información hasta que ya no queda
+    // información por leer
     while (blk_num < PTRS_PER_BLK && len_to_write > 0) {
+        // Se calcula la cantidad de información que se escribirá en esta iteración
         size_t cur_len_to_write = len_to_write > MY_BLOCK_SIZE ? (size_t) MY_BLOCK_SIZE - blk_offset : len_to_write;
         size_t temp = blk_offset + cur_len_to_write;
 
-        if (!blk_indices[blk_num]) { // Revisar si que sea 0 nos jode
+        // Si no hay un puntero en esta posición del bloque se escribe ahí
+        if (!blk_indices[blk_num]) {
             int freeb = get_free_block();
             if (freeb < 0) return len - len_to_write;
             blk_indices[blk_num] = freeb;
-            //write back
 
-            if(write_data(blk_indices, blk) < 0) { // TODO retstat
+            if(write_data(blk_indices, blk) < 0) {
                 perror("Error al escribir un bloque de índices en write_data.");
                 return -EIO;
             }
@@ -757,6 +1045,24 @@ size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
     return len - len_to_write;
 }
 
+/**
+ * write_indir2 - escribe información en el
+ *   bloque indirecto 2 de un inodo
+ *
+ * Errors:
+ *   -EIO error al leer o escribir en disco
+ *
+ * @param blk número de bloque del que se leerá
+ * @param buf buffer de donde se obtendrá la
+ *   información a leer
+ * @param len largo máximo a escribir
+ * @param offset posición de donde se comenzará a
+ *   escribir
+ * @param indir1_size largo del bloque indirecto
+ *   1 del inodo dueño del indirecto 2 recibido
+ * @return cantidad de información que quedó como
+ *   no escrita, o un código de error
+ */
 size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int indir1_size) {
 
     uint32_t *blk_indices = read_data(blk);
@@ -768,11 +1074,17 @@ size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int 
     size_t blk_num = offset / indir1_size;
     size_t blk_offset = offset % indir1_size;
     size_t len_to_write = len;
+
+    // Por cada uno de los punteros del bloque indir2 se lee información hasta que ya no queda
+    // información por leer
     while (blk_num < PTRS_PER_BLK && len_to_write > 0) {
+        // Se calcula la cantidad de información que se escribirá en esta iteración
         size_t cur_len_to_write = len_to_write > indir1_size ? (size_t) indir1_size - blk_offset : len_to_write;
         size_t temp = blk_offset + cur_len_to_write;
         len_to_write -= temp;
-        if (!blk_indices[blk_num]) { // TODO revisar si nos jode
+
+        // Si no hay un puntero en esta posición del bloque se escribe ahí
+        if (!blk_indices[blk_num]) {
             int freeb = get_free_block();
             if (freeb < 0) return len - len_to_write;
             blk_indices[blk_num] = freeb;
@@ -784,6 +1096,7 @@ size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int 
             }
         }
 
+        // Se realiza un llamado a la función para escribir en los indirs1
         temp = write_indir1(blk_indices[blk_num], buf, temp, blk_offset);
         if (temp == 0) return len - len_to_write;
         buf += temp;
@@ -793,8 +1106,18 @@ size_t write_indir2(size_t blk, const char *buf, size_t len, size_t offset, int 
     return len - len_to_write;
 }
 
+/**
+ * get_inode - obtiene el inodo correspondiente
+ *   al índice recibido como parámetro
+ *
+ * @param inode_id número índice de inodo que se
+ *   desea obtener
+ * @return el inodo buscado, o un valor nulo en
+ *   caso de que no se encontrara
+ */
 my_inode *get_inode(int inode_id) {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -803,6 +1126,7 @@ my_inode *get_inode(int inode_id) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición que corresponde al bloque a leer
     int block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz +
             super_block->block_map_sz + (inode_id / INODES_PER_BLK);
     my_inode *inode_block = read_data(block);
@@ -810,7 +1134,6 @@ my_inode *get_inode(int inode_id) {
     my_inode *to_return = malloc(sizeof(struct my_inode));
 
     void *ptr = inode_block + (inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK));
-
     memcpy(to_return, ptr, sizeof(struct my_inode));
 
     free(super_block);
@@ -818,8 +1141,23 @@ my_inode *get_inode(int inode_id) {
     return to_return;
 }
 
+/**
+ * update_inode - actualiza un inodo presente en
+ *   memoria principal al disco
+ *
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *
+ * @param inode_id identificador que sirve como
+ *   índice del inodo a actualizar
+ * @param to_update_inode puntero al inodo que será
+ *   actualizado
+ * @return 0 en caso de que resulte éxitoso, o un
+ *   código de error en otro caso
+ */
 int update_inode(int inode_id, my_inode *to_update_inode) {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -828,12 +1166,12 @@ int update_inode(int inode_id, my_inode *to_update_inode) {
     uint32_t key = jenkins_one_at_a_time_hash(password, strlen(password));
     block_decipher((void **)&super_block, key);
 
+    // Se calcula la posición que corresponde al bloque a leer
     int block = SUPER_BLOCK_NUM + ceil((double)SUPER_SIZE / MY_BLOCK_SIZE) + super_block->inode_map_sz +
             super_block->block_map_sz + (inode_id / INODES_PER_BLK);
     my_inode *inode_block = read_data(block);
 
-    void *ptr = inode_block + (inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK)); //Guardar en variable?
-
+    void *ptr = inode_block + (inode_id - ((inode_id/INODES_PER_BLK)*INODES_PER_BLK));
     memcpy(ptr, to_update_inode, sizeof(struct my_inode));
 
     if(write_data(inode_block, block) <0) {
@@ -847,8 +1185,21 @@ int update_inode(int inode_id, my_inode *to_update_inode) {
     return EXIT_SUCCESS;
 }
 
+/**
+ * find_in_dir - encuentra el índice de un
+ *   inodo al buscar entre las entradas de un
+ *   directorio
+ *
+ * @param dir_entry entradas de directorio de
+ *   donde se buscará un inodo de un archivo
+ * @param filename nombre del archivo por el
+ *   se buscará el inodo
+ * @return número de inodo en caso de que se
+ *   encuentre, o 0 en caso contrario
+ */
 int find_in_dir(my_dirent *dir_entry, char *filename) {
 
+    // Se recorre toda el directorio en busqueda de una entrada válida con un nombre de archivo que coincida
     for(int i=0; i< DIR_ENTS_PER_BLK; ++i) {
         if(dir_entry[i].valid && strcmp(dir_entry[i].filename, filename) == 0) {
             return dir_entry[i].inode;
@@ -858,12 +1209,18 @@ int find_in_dir(my_dirent *dir_entry, char *filename) {
 }
 
 /**
- * Find free directory entry.
+ * find_free_dir - se busca una entrada de directorio
+ *   libre
  *
- * @return index of directory free entry or -ENOSPC
- *   if no space for new entry in directory
+ * Errors:
+ *   -ENOSPC no existe espacio para un nuevo inodo
+ *
+ * @return indice de una entrada de directorio vacía o
+ *   un valor de error
  */
 int find_free_dir(my_dirent *de) {
+
+    // Se recorre toda el directorio en busqueda de una entrada vacía.
     for (int i = 0; i < DIR_ENTS_PER_BLK; i++) {
         if (!de[i].valid) {
             return i;
@@ -873,12 +1230,17 @@ int find_free_dir(my_dirent *de) {
 }
 
 /**
- * Determines whether directory is empty.
+ * is_empty_dir - determina si un directorio se
+ *   encuentra vacío
  *
- * @param de ptr to first entry in directory
- * @return 1 if empty 0 if has entries
+ * @param de puntero a la primera entrada de
+ *   directorio
+ * @return 1 si se encuentra vacío, 0 si es el
+ *   caso contrario
  */
 int is_empty_dir(my_dirent *de) {
+
+    // Se recorre toda el directorio y si se encuentra una entrada válida se retorna 0
     for (int i = 0; i < DIR_ENTS_PER_BLK; i++) {
         if (de[i].valid) {
             return false;
@@ -888,19 +1250,20 @@ int is_empty_dir(my_dirent *de) {
 }
 
 /**
- * Look up a single directory entry in a directory.
+ * lookup_for_filename - busca una entrada de directorio en
+ *   un directorio
  *
- * Errors
- *   -EIO     - error reading block
- *   -ENOENT  - a component of the path is not present.
- *   -ENOTDIR - intermediate component of path not a directory
+ * Errors:
+ *   -EIO errores de lectura o escritura en disco
+ *   -ENOENT un elemento del path no se encuentra
  *
+ * @return el índice de un inodo en caso de encontrar el
+ *   buscado, código de error en caso contrario
  */
 int lookup_for_filename(int dir_inode_id, char *filename) {
 
-    //get corresponding directory
+    // Se obtiene el directorio actual y sus entradas de directorio
     my_inode *cur_dir = get_inode(dir_inode_id);
-    //init buff entries
     my_dirent *entries = read_data(cur_dir->direct[0]);
 
     if (entries == NULL) {
@@ -919,18 +1282,20 @@ int lookup_for_filename(int dir_inode_id, char *filename) {
 }
 
 /**
- * Parse path name into tokens at most nnames tokens after
- * normalizing paths by removing '.' and '..' elements.
+ * parse - divide una dirección "path" en tokens hasta el
+ * valor nnames, remueve cualquier elemento "." o ".."
  *
- * If names is NULL,path is not altered and function  returns
- * the path count. Otherwise, path is altered by strtok() and
- * function returns names in the names array, which point to
- * elements of path string.
+ * Si names es NULL, el path no es alterado y se retorna el
+ * contador de paths. En otro caso, el path es alterado por
+ * strtok() y la función retorna los nombres en el arreglo
+ * names, que apunta a los elementos del string del path
  *
- * @param path the directory path
- * @param names the argument token array or NULL
- * @param nnames the maximum number of names, 0 = unlimited
- * @return the number of path name tokens
+ * @param path el path del directorio
+ * @param names arreglo a los nombres presentes en el path o
+ *   NULL
+ * @param nnames el número máximo de nombres, si este número
+ *   es 0 el valor es ilimitado
+ * @return el número de elementos en el path recibido
  */
 int parse(char *path, char *names[], int nnames) {
 
@@ -938,10 +1303,13 @@ int parse(char *path, char *names[], int nnames) {
     int count = 0;
     char *token = strtok(dup_path, "/");
 
+    // Mientras que strtok brinde un elemento que puede ser comprobado...
     while (token != NULL) {
-        if (strlen(token) > FILENAME_MAX - 1) return -EINVAL; // EXIT_FAILURE
+        if (strlen(token) > FILENAME_MAX - 1) return -EINVAL;
+        // Se ignoran los elementos "." y ".."
         if (strcmp(token, "..") == 0 && count > 0) count--;
         else if (strcmp(token, ".") != 0) {
+            // Nombre válido
             if (names != NULL && count < nnames) {
                 names[count] = (char *)malloc(sizeof(char *));
                 memset(names[count], 0, sizeof(char *));
@@ -954,35 +1322,43 @@ int parse(char *path, char *names[], int nnames) {
 
     free(dup_path);
 
-    //if the number of names in the path exceed the maximum
-    if (nnames != 0 && count > nnames) return -EXIT_FAILURE; //TODO free names?? era un -1
+    // Si el número de nombres en el arreglo names excede el máximo...
+    if (nnames != 0 && count > nnames) return -EXIT_FAILURE;
     return count;
 }
 
 /**
- * free allocated char ptr array
- * @param arr arr to be freed
+ * free_char_array - libera la memoria solicitada
+ *   para un puntero de strings
+ *
+ * @param arr arreglo al que se le realizará la
+ *   función "free"
+ * @param len largo de arr
  */
 void free_char_array(char *array[], int len) {
 
+    // Se recorre al arreglo liberando a cada uno de sus elementos
     for (int i = 0; i < len; i++) {
         free(array[i]);
     }
 }
 
 /**
- * Return inode number for specified file or
- * directory.
+ * get_inode_id_from_path - retorna el número identificado de un
+ *   inodo dado el path del archivo relacionado a este
  *
- * Errors
- *   -ENOENT  - a component of the path is not present.
- *   -ENOTDIR - an intermediate component of path not a directory
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *   -ENOENT un elemento del path no se encuentra
+ *   -ENOTDIR un elemento intermedio del path no es un directorio
  *
- * @param path the file path
- * @return inode of path node or error
+ * @param path la dirección del archivo
+ * @return identificador del inodo si es encontrado o un
+ *   código de error
  */
 int get_inode_id_from_path(char *path) {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -995,34 +1371,35 @@ int get_inode_id_from_path(char *path) {
 
     if (strcmp(path, "/") == 0 || strlen(path) == 0) return root_inode_id;
     int inode_id = root_inode_id;
-    //get number of names
+    // Se obtiene el número de nombres
     int num_names = parse(path, NULL, 0);
-    //if the number of names in the path exceed the maximum, return an error, error type to be fixed if necessary
-    if (num_names < 0) return -ENOTDIR; //ENOTDIR
+    // Si el número de errores excede el máximo se da un error
+    if (num_names < 0) return -ENOTDIR;
     if (num_names == 0) return root_inode_id;
-    //copy all the names
+    // Se crea un arreglo para los nombres del tamaño antes obtenido y se reciben
     char *names[num_names];
     parse(path, names, num_names);
-    //lookup inode
+    // Se busca al nodo raíz
     my_inode *temp_inode = get_inode(inode_id);
 
     for (int i = 0; i < num_names; i++) {
-        //if token is not a directory return error
+        // Si el token no es un directorio se da un error
         if (!S_ISDIR(temp_inode->mode)) {
             free_char_array(names, num_names);
             return -ENOTDIR;
         }
-        //lookup and record inode
+        // Se busca al inodo en el arreglo de nombres en la posición i
         inode_id = lookup_for_filename(inode_id, names[i]);
         if (inode_id < 0) {
             free_char_array(names, num_names);
             return -ENOENT;
         }
+
         free(temp_inode);
         temp_inode = get_inode(inode_id);
     }
-    free_char_array(names, num_names);
 
+    free_char_array(names, num_names);
     free(temp_inode);
     free(super_block);
 
@@ -1030,20 +1407,23 @@ int get_inode_id_from_path(char *path) {
 }
 
 /**
- *  Return inode number for path to specified file
- *  or directory, and a leaf name that may not yet
- *  exist.
+ *  get_inode_id_and_leaf_from_path - retorna el número de inodo
+ *    para un archivo o directorio según un path, además, indica
+ *    el nombre de una hoja que puede que aún no exista
  *
- * Errors
- *   -ENOENT  - a component of the path is not present.
- *   -ENOTDIR - an intermediate component of path not a directory
+ * Errors:
+ *   -EIO error al leer o escribir de disco
+ *   -ENOENT un elemento del path no se encuentra
+ *   -ENOTDIR un elemento intermedio del path no es un directorio
  *
- * @param path the file path
- * @param leaf pointer to space for FS_FILENAME_SIZE leaf name
- * @return inode of path node or error
+ * @param path el path del archivo o directorio
+ * @param leaf puntero al espacio para el nombre de la hoja
+ * @return el identificador del inodo buscado o un código de
+ *   error
  */
 int get_inode_id_and_leaf_from_path(char *path, char *leaf) {
 
+    // Se obtiene la información del superbloque y esta se descifra
     my_super *super_block = read_data(SUPER_BLOCK_NUM);
     if (super_block == NULL) {
         perror("Error al leer el superbloque en read_data.");
@@ -1056,32 +1436,34 @@ int get_inode_id_and_leaf_from_path(char *path, char *leaf) {
 
     if (strcmp(path, "/") == 0 || strlen(path) == 0) return root_inode_id;
     int inode_id = root_inode_id;
-    //get number of names
+    // Se obtiene el número de nombres
     int num_names = parse(path, NULL, 0);
-    //if the number of names in the path exceed the maximum, return an error, error type to be fixed if necessary
+    // Si el número de errores excede el máximo se da un error
     if (num_names < 0) return -ENOTDIR; // EXIT_FAILURE
     if (num_names == 0) return root_inode_id;
-    //copy all the names
+    // Se crea un arreglo para los nombres del tamaño antes obtenido y se reciben
     char *names[num_names];
     parse(path, names, num_names);
-    //lookup inode
+    // Se busca al nodo raíz
     my_inode *temp_inode = get_inode(inode_id);
 
     for (int i = 0; i < num_names -1; i++) {
-        //if token is not a directory return error
-        if (!S_ISDIR(temp_inode->mode)) {    //sys/stat.h
+        // Si el token no es un directorio se da un error
+        if (!S_ISDIR(temp_inode->mode)) {
             free_char_array(names, num_names);
-            return -ENOTDIR; // EXIT_FAILURE
+            return -ENOTDIR;
         }
-        //lookup and record inode
+        // Se busca al inodo en el arreglo de nombres en la posición i
         inode_id = lookup_for_filename(inode_id, names[i]);
         if (inode_id < 0) {
             free_char_array(names, num_names);
-            return -ENOENT; // EXIT_FAILURE
+            return -ENOENT;
         }
+
         free(temp_inode);
         temp_inode = get_inode(inode_id);
     }
+    // Se copia el último elemento del arreglo
     strcpy(leaf, names[num_names - 1]);
 
     if (!S_ISDIR(temp_inode->mode)) {
@@ -1099,22 +1481,34 @@ int get_inode_id_and_leaf_from_path(char *path, char *leaf) {
  * get_data() will use libpng to read an image file. refer to libpng
  * documentation for details
  */
+/**
+ * get_image_data - se obtiene la información de una imagen
+ *
+ * @param name nombre del archivo del que se obtendrá la información
+ * @param width ancho del archivo
+ * @param height altura del archivo
+ * @param raw puntero a datos vacíos que terminará conteniendo la
+ *   información binaria del archivo buscado
+ */
 void get_image_data(const char *name, int *width, int *height, void **raw) {
 
+    // Se abre el archivo con el código QR pasado por parámetro
     FILE *file = fopen(name, "rb");
     if(!file) {
         perror("Error al abrir un archivo QR.");
         return;
     }
+    // Se crea la estructura con la información para generar un png
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING,
                                    NULL, NULL, NULL);
-    if(!png) exit(3);
-    if(setjmp(png_jmpbuf(png))) exit(4);
+    if(!png) exit(EXIT_FAILURE);
+    if(setjmp(png_jmpbuf(png))) exit(EXIT_FAILURE);
     png_infop info = png_create_info_struct(png);
-    if(!info) exit(5);
+    if(!info) exit(EXIT_FAILURE);
     png_init_io(png, file);
     png_read_info(png, info);
-    /* configure for 8bpp grayscale input */
+
+    // Se configura para la escala de grises 8bpp
     int color = png_get_color_type(png, info);
     int bits = png_get_bit_depth(png, info);
     if(color & PNG_COLOR_TYPE_PALETTE)
@@ -1127,7 +1521,8 @@ void get_image_data(const char *name, int *width, int *height, void **raw) {
         png_set_strip_alpha(png);
     if(color & PNG_COLOR_MASK_COLOR)
         png_set_rgb_to_gray_fixed(png, 1, -1, -1);
-    /* allocate image */
+
+    // Se reserva espacio para la imagen
     *width = png_get_image_width(png, info);
     *height = png_get_image_height(png, info);
     *raw = malloc(*width * *height);
@@ -1138,8 +1533,24 @@ void get_image_data(const char *name, int *width, int *height, void **raw) {
     png_read_image(png, rows);
 }
 
+/**
+ * qrcode_png - genera una imágen con un código QR a partir
+ *   de un elemento QRcode
+ *
+ * @param code estructura que almacena toda la información para
+ *   formar un código QR
+ * @param fg_color arreglo que define el color de primer plano
+ *   que tendrá la imagen generada
+ * @param bg_color arreglo que define el color del fondo de la
+ *   imagen que será generada
+ * @param size tamaño que tendrá la imagen a generar
+ * @param margin margen que tendrá la imagen a generar
+ * @return estructura que almacena la información para generar
+ *   un archivo png
+ */
 gdImagePtr qrcode_png(QRcode *code, int fg_color[3], int bg_color[3], int size, int margin) {
 
+    // Se rellena la información para generar un png a partir de una estructura QRcode de qrencode
     int code_size = size / code->width;
     code_size = (code_size == 0)  ? 1 : code_size;
     int img_width = code->width * code_size + 2 * margin;

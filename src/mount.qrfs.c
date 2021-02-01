@@ -8,14 +8,14 @@
 #include "my_inode.h"
 #include "my_storage.h"
 
-#include <errno.h> //perror and ENOMEM
-#include <fcntl.h> //mode_t
+#include <errno.h>
+#include <fcntl.h>
 #include <fuse.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h> //stat
-#include <unistd.h> // operaciones con dir
+#include <sys/stat.h>
+#include <unistd.h>
 #include <math.h>
 #include <sys/types.h>
 

@@ -1,5 +1,5 @@
-/*
- *
+/**
+ * Encargado de almacenar los datos de los inodos del sistema de archivos y sus funciones.
  */
 
 #include <unistd.h>
@@ -12,10 +12,11 @@
 #include "my_storage.h"
 
 /**
- * Copy stat from inode to st
- * @param inode inode to be copied from
- * @param st holder to hold copied stat
- * @param inode_idx inode_idx
+ * cpy_stat - copia el estado de un inodo en una
+ *   estructura stat
+ *
+ * @param inode del que se obtendrán los datos
+ * @param st donde se copiarán los datos
  */
 void cpy_stat(my_inode *inode, struct stat *st) {
 
@@ -32,6 +33,21 @@ void cpy_stat(my_inode *inode, struct stat *st) {
     st->st_blocks = (inode->size + MY_BLOCK_SIZE - 1) / MY_BLOCK_SIZE; //TODO revisar
 }
 
+/**
+ * create_inode - crea un nuevo nodo según los
+ *   parámetros que recibe
+ *
+ * @param mode indica los permisos del nuevo archivo
+ *   y su tipo
+ * @param size tamaño del archivo relacionado con el
+ *   inodo
+ * @param which_iNode identificador del inodo
+ * @param direct_array arreglo de punteros a los bloques
+ *   directos
+ * @param indir_1 puntero al bloque indirecto 1 del inodo
+ * @param indir_2 puntero al bloque indirecto 2 del inodo
+ * @return puntero al inodo creado
+ */
 my_inode *create_inode(int mode, int size, int which_iNode, int direct_array[NUM_DIRECT_ENT], int indir_1, int indir_2) {//recibir arreglo de direct
 
     my_inode *inode_to_return = (my_inode *)malloc(sizeof(my_inode));
@@ -49,6 +65,17 @@ my_inode *create_inode(int mode, int size, int which_iNode, int direct_array[NUM
     return inode_to_return;
 }
 
+/**
+ * create_dirent - crea una entrada de directorio
+ *
+ * @param valid indica si la entrada es válida
+ * @param isDir dice si la nueva entrada apunta a un
+ *   directorio o no
+ * @param inode_id indica el identificador del inodo
+ * @param filename nombre del archivo o directorio
+ * @return puntero a la entrada de directorio recién
+ *   creada
+ */
 my_dirent *create_dirent(int valid, int isDir, int inode_id, char *filename) {
 
     my_dirent *dirent_to_return = (my_dirent *)malloc(sizeof(my_dirent));
@@ -61,6 +88,21 @@ my_dirent *create_dirent(int valid, int isDir, int inode_id, char *filename) {
     return dirent_to_return;
 };
 
+/**
+ * set_attributes_and_update - recibe una entrada de
+ *   directorio, actualiza sus valores y lo reescribe
+ *   en disco
+ *
+ * Errors:
+ *   -EIO si ocurre un error al escribir en disco
+ *
+ * @param de puntero a la entrada de directorio a actualizar
+ * @param name nombre del archivo o directorio que apuntará
+ * @param mode permisos y tipo del archivo o directorio
+ * @param isDir indica si el nuevo inodo es directorio o no
+ * @return 0 si termina con éxito, valor de error en otro
+ *   caso
+ */
 int set_attributes_and_update(my_dirent *de, char *name, mode_t mode, bool isDir) {
 
     //get free directory and inode
@@ -80,8 +122,10 @@ int set_attributes_and_update(my_dirent *de, char *name, mode_t mode, bool isDir
     inode->ctime = inode->mtime = time(NULL);
     inode->size = 0;
     inode->direct[0] = freeb;
-    //update map and inode
-    update_inode(freei, inode);
+
+    if(update_inode(freei, inode) < 0) {
+        return EIO;
+    }
 
     free(inode);
     return EXIT_SUCCESS;

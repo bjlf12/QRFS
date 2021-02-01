@@ -5,26 +5,19 @@
 #ifndef QRFS_MY_SUPER_H
 #define QRFS_MY_SUPER_H
 
-// QR v23
-//#define FS_BLOCK_SIZE 256
 
 #include <inttypes.h>
 #include <stdlib.h>
 
-// QR v10
 #define MY_BLOCK_SIZE 1024
 #define MY_MAGIC 0x53465251
 
 #define SUPER_BLOCK_NUM 0
-//0
 
-#define NUMBER_OF_INODES 64 // Se puede calcular get free inode
-#define NUMBER_OF_DATABLOCKS 20
-//1024 200 20
+#define NUMBER_OF_INODES 64
+#define NUMBER_OF_DATABLOCKS 1024
 
 #define SUPER_SIZE 24
-
-//20 + 251*4 + 512*4
 
 typedef struct my_super {
 
