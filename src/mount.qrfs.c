@@ -3,8 +3,6 @@
  */
 
 
-
-#include "config.h"
 #include "mount.qrfs.h"
 #include "my_super.h"
 #include "my_inode.h"
@@ -28,7 +26,7 @@ static int INDIR2_SIZE = (MY_BLOCK_SIZE / sizeof(uint32_t)) * (MY_BLOCK_SIZE / s
 
 void *my_init(struct fuse_conn_info *conn) { //TODO necesario
 
-    return MY_DATA;
+    return NULL;
 }
 
 char *strmode(char *buf, int mode) { //TODO que hacemos con esto printstat
@@ -762,7 +760,7 @@ int my_access(const char *path, int mask) { //TODO arreglar
 }
 
 
-int fs_chmod(const char *path, mode_t mode) { //TODO quitar, cambiar nombre ??
+int my_chmod(const char *path, mode_t mode) { //TODO quitar, cambiar nombre ??
 
     printf("Haciendo un chmod.\n");
     //printf("resultado mkdir: %d\n", my_mkdir("/dir1", 0777));
@@ -870,52 +868,37 @@ struct fuse_operations my_oper = {
         .readdir = my_readdir,
         .init = my_init,
         .access = my_access,
-        .chmod = fs_chmod
+        .chmod = my_chmod
 };
 
 void usage(char *arg0) {
 
-    printf("Uso: %s directorio_qr/ punto_montaje/", arg0); //TODO con el ./ ??
+    printf("Uso: %s [-f] directorio_qr/ contraseña punto_montaje/", arg0); //TODO con el ./ ??
 }
 
 int main(int argc, char *argv[]) {
 
-    int fuse_stat; // TODO dejar??
-    my_state *my_currentstate;
-    printf("Fuse library version %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
+    printf("Versión de FUSE: %d.%d\n", FUSE_MAJOR_VERSION, FUSE_MINOR_VERSION);
 
     if(argc < 4) {
 
         usage(argv[0]);
         perror("Error en los argumentos.");
         return -EINVAL;
-
     }
 
     int mount_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
-    char *mount_qrfolder_path = argv[2];
-    char *mount_password = argv[5];
+    char *mount_qrfolder_path = argv[argc - INIT_QR_ARG_POSITION];
+    char *mount_password = argv[argc - PASSWD_ARG_POSITION];
     init_storage(mount_qrfolder_path, mount_password, mount_file_size);
 
-    if ((getuid() == 0) || (geteuid() == 0)) {
-        fprintf(stderr, "Running mount.qrfs as root opens unnacceptable security holes.\n");
-        return -EACCES;
-    }
-
-    my_currentstate = malloc(sizeof(my_state));
-    if(my_currentstate == NULL) {
-        perror("Error al utilizar malloc.");
-        return -ENOMEM;
-    }
-    my_currentstate->rootdir = realpath(argv[argc - ROOT_ARG_POSITION], NULL);
-
     argv[argc - INIT_QR_ARG_POSITION] = argv[argc - MOUNT_ARG_POSITION]; //TODO revisar
-    argv[argc - ROOT_ARG_POSITION] = argv[argc - MOUNT_ARG_POSITION] = NULL;
-    argv[5] = NULL;
-    argc -= 3;
+    argv[argc - PASSWD_ARG_POSITION] = argv[argc - MOUNT_ARG_POSITION] = NULL;
+    argc -= 2;
 
     printf("Llamando a fuse_main.\n");
-    fuse_stat = fuse_main(argc, argv, &my_oper, NULL);
+
+    fuse_main(argc, argv, &my_oper, NULL);
 
     printf("Saliendo de fuse_main");
 

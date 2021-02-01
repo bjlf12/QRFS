@@ -21,20 +21,20 @@ uint32_t jenkins_one_at_a_time_hash(char *key, size_t len) {
     return abs(hash);
 }
 
-void block_cipher(void **data, uint32_t shift) {
+void block_cipher(void **data, uint32_t key) {
 
     char *data_to_cipher = *data;
 
     for(int i=0; i< MY_BLOCK_SIZE; ++i) {
-        data_to_cipher[i] = data_to_cipher[i] ^ shift;
+        data_to_cipher[i] = data_to_cipher[i] ^ key;
     }
 }
 
-void block_decipher(void **data, uint32_t shift) {
+void block_decipher(void **data, uint32_t key) {
 
     char *data_to_decipher = *data;
 
     for(int i=0; i< MY_BLOCK_SIZE; ++i) {
-        data_to_decipher[i] = data_to_decipher[i] ^ shift;
+        data_to_decipher[i] = data_to_decipher[i] ^ key;
     }
 }

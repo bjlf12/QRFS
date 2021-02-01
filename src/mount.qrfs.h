@@ -16,16 +16,10 @@
 
 #define PATH_MAX 4096
 
-#define INIT_QR_ARG_POSITION 4
-#define ROOT_ARG_POSITION 3
-#define MOUNT_ARG_POSITION 2
+#define INIT_QR_ARG_POSITION 3
+#define PASSWD_ARG_POSITION 2
+#define MOUNT_ARG_POSITION 1
 
-typedef struct my_state {
-    //FILE *logfile;
-    char *rootdir;
-}my_state;
-
-#define MY_DATA ((struct my_state *) fuse_get_context()->private_data)
 /*
 void *my_init(struct fuse_conn_info *conn);
 

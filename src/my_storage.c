@@ -723,7 +723,7 @@ size_t read_indir2(int block_num, char *buf, size_t length, size_t offset, int i
 size_t write_indir1(int blk, const char *buf, size_t len, size_t offset) {
 
     uint32_t *blk_indices  = read_data(blk);
-    if (blk_indices == NULL) 
+    if (blk_indices == NULL) {
         perror("Error al leer un bloque de índices en read_data.");
         return -EIO;
     }

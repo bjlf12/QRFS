@@ -14,6 +14,7 @@
 // QR v10
 #define MY_BLOCK_SIZE 1024
 #define MY_MAGIC 0x53465251
+
 #define SUPER_BLOCK_NUM 0
 //0
 
@@ -40,8 +41,8 @@ typedef struct my_super {
 
 uint32_t jenkins_one_at_a_time_hash(char *key, size_t len);
 
-void block_cipher(void **data, uint32_t shift);
+void block_cipher(void **data, uint32_t key);
 
-void block_decipher(void **data, uint32_t shift);
+void block_decipher(void **data, uint32_t key);
 
 #endif //QRFS_MY_SUPER_H

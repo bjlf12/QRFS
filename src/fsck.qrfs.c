@@ -191,7 +191,7 @@ int check_file_system(char *user_password) {
     memset(data, 0, mkfs_file_size);
     void *ptr = (void *)data;
 
-    for(int i=SUPER_BLOCK_NUM; i<10; ++i) {
+    for(int i=SUPER_BLOCK_NUM; i<NUMBER_OF_DATABLOCKS; ++i) {
 
         memcpy(ptr, read_data(i), 1024);
         ptr += 1024;
@@ -202,6 +202,11 @@ int check_file_system(char *user_password) {
     my_super *super = (my_super *)data;
 
     block_decipher((void **)&super, key);
+
+    if(MY_MAGIC != super->magic) {
+        perror("La contraseña para utilizar los datos del sistema de archivos es incorrecta.");
+        return -EXIT_FAILURE;
+    }
 
     printf("magic: %d, inode_map_sz: %d, block_map_sz: %d, inode_region_sz: %d, num_blocks: %d, inode: %d\n",
            super->magic, super->inode_map_sz, super->block_map_sz, super->inode_region_sz, super->num_blocks, super->root_inode);
@@ -254,7 +259,7 @@ int check_file_system(char *user_password) {
     printf("12: %d\n", inodes[11].uid);
     printf("13: %d\n", inodes[12].uid);
 
-    for(int i=0; i<10; ++i) {
+    for(int i=0; i<NUMBER_OF_DATABLOCKS; ++i) {
         if(FD_ISSET(i, inode_b)) {
             printf("bitmap: %d\n", i);
         }
@@ -352,25 +357,26 @@ int check_file_system(char *user_password) {
 
 void usage(char *arg0) {
 
-    printf("Uso: %s directorio_qr/ qr_inicial constraseña\n", arg0);
+    printf("Uso: %s directorio_qr/ constraseña\n", arg0);
 
 }
 
 int main(int argc, char* argv[]) {
 
-    if(argc != 4) {
+    if(argc != 3) {
         usage(argv[0]);
         perror("Error en los argumentos.");
         return(-EINVAL);
     }
 
     char *mkfs_qrfolder_path = argv[1];
-    char *initial_qr = argv[2];
-    char *mkfs_password = argv[3];
+    char *mkfs_password = argv[2];
     mkfs_file_size = NUMBER_OF_DATABLOCKS * MY_BLOCK_SIZE;
 
 
     init_storage(mkfs_qrfolder_path, mkfs_password, mkfs_file_size);
-    check_file_system(mkfs_password);
+    if(check_file_system(mkfs_password) < 0) {
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }
